@@ -216,6 +216,14 @@ td.c{text-align:center;font-weight:700;white-space:nowrap}
 .fix{padding-left:34px;display:grid;gap:6px}
 .fix label{font-size:13px;font-weight:700;color:var(--bad)}
 .fix input{border-color:var(--bad)}
+.ph-req{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:46px;border:2px dashed var(--brand);border-radius:12px;color:var(--brand);font-weight:700;background:var(--brand-soft)}
+.ph-req.ok{border-style:solid;border-color:var(--ok);color:var(--ok);background:transparent}
+.ph-req.bad{border-color:var(--bad);color:var(--bad)}
+.zone-ph{display:grid;gap:6px;margin:4px 0 10px}
+.eq-read{display:grid;gap:8px;padding:10px 0 4px;border-top:1px dashed var(--line)}
+.eq-read h4{margin:0;font-size:14px}
+.eq-add{display:grid;gap:8px;padding:12px;border:1px dashed var(--line);border-radius:12px}
+.zona-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
 </style>
 </head>
 <body>
@@ -288,38 +296,76 @@ const PHOTO_BTN = key => `<label class="ph-btn" title="Tomar foto"><input type="
 <script>
 /* ---------- Contenido y reglas del formato ---------- */
 const CTRL = {codigo:"F-PN-05", version:"02", emision:"18/11/2026", proceso:"Proceso: Producción y saneamiento", corto:"Registro de temperaturas",
-  titulo:"REGISTRO DE TEMPERATURAS DE EQUIPOS DE FRÍO", prefijo:"PN05", draftKey:"elpatio-f-pn-05-borrador", cargoResp:"Chef Principal",
+  titulo:"REGISTRO DE TEMPERATURAS DE EQUIPOS DE FRÍO", prefijo:"PN05", draftKey:"elpatio-f-pn-05-borrador", cargoResp:"Chef Principal", fotoCols:4,
   archivo:"04 Produccion y saneamiento / 8. Registros / F-PN-05 Registro de temperaturas / 2026"};
-/* Equipos y rangos aceptables (°C). Si cambia un equipo, se ajusta solo aquí. */
-const EQUIPOS = [
-  ["Nevera cocina 1", 0, 4], ["Nevera cocina 2", 0, 4], ["Nevera ensaladas", 0, 4], ["Nevera bebidas", 0, 4],
-  ["Nevera bodega", 0, 4], ["Congelador cocina", -30, -18], ["Congelador bodega", -30, -18], ["Cámara de carnes", 0, 4]
+/* Rangos aceptables por tipo de equipo (°C) */
+const TIPOS = {R:{label:"Refrigeración", mn:0, mx:4, txt:"0 a 4 °C"}, C:{label:"Congelación", mn:-30, mx:-18, txt:"-18 °C o menos"}};
+/* Equipos oficiales por zona. Los que se agreguen desde el formulario quedan guardados en este celular. */
+const ZONAS_EQ = ["Cocina","Bodega","Bar"];
+const EQUIPOS_BASE = [
+  {id:"e1", zona:"Cocina", nombre:"Nevera cocina 1", tipo:"R"},
+  {id:"e2", zona:"Cocina", nombre:"Nevera cocina 2", tipo:"R"},
+  {id:"e3", zona:"Cocina", nombre:"Nevera ensaladas", tipo:"R"},
+  {id:"e8", zona:"Cocina", nombre:"Cámara de carnes", tipo:"R"},
+  {id:"e6", zona:"Cocina", nombre:"Congelador cocina", tipo:"C"},
+  {id:"e5", zona:"Bodega", nombre:"Nevera bodega", tipo:"R"},
+  {id:"e7", zona:"Bodega", nombre:"Congelador bodega", tipo:"C"},
+  {id:"e4", zona:"Bar", nombre:"Nevera bebidas", tipo:"R"}
 ];
+const EXTRA_KEY = "elpatio-f-pn-05-equipos-extra";
+let extras = [];
+try{ extras = JSON.parse(localStorage.getItem(EXTRA_KEY)||"[]"); }catch(e){ extras = []; }
+const saveExtras = () => { try{ localStorage.setItem(EXTRA_KEY, JSON.stringify(extras)); }catch(e){} };
+const equipos = () => ZONAS_EQ.flatMap(z => [...EQUIPOS_BASE, ...extras].filter(e=>e.zona===z));
+const LECT = {m:"mañana", t:"tarde"};
 const SECCIONES = ["Datos","Lectura de la mañana","Lectura de la tarde","Resultado y firma"];
 const META = 0.95;
-const rango = ([, mn, mx]) => mx <= -18 ? `${mx} °C o menos` : `${mn} a ${mx} °C`;
-const fuera = (v, [, mn, mx]) => v!=="" && v!=null && (Number(v) < mn || Number(v) > mx);
+const fueraDe = (v, e) => v!=="" && v!=null && (Number(v) < TIPOS[e.tipo].mn || Number(v) > TIPOS[e.tipo].mx);
 
-function eqHTML(i, t){
-  const e = EQUIPOS[i], k = `${t}${i}`;
+function eqHTML(t, e, n){
+  const k = `${t}-${e.id}`, extra = !EQUIPOS_BASE.some(b=>b.id===e.id);
   return `<div class="item">
-    <div class="eq-top"><div class="q" style="flex:1"><span class="num">${i+1}</span><p><b>${esc(e[0])}</b><br><span class="eq-rng">Rango aceptable: ${esc(rango(e))}</span></p></div>
+    <div class="eq-top"><div class="q" style="flex:1"><span class="num">${n}</span><p><b>${esc(e.nombre)}</b>${extra?' <span class="eq-rng">(agregado)</span>':''}<br><span class="eq-rng">${TIPOS[e.tipo].label} · rango ${TIPOS[e.tipo].txt}</span></p></div>
       <span class="pill" id="re-${k}">Sin lectura</span></div>
-    <div class="obs"><div class="grid2 tight">
-      <label class="f">Temperatura (°C)<input type="number" step="0.1" min="-40" max="30" name="${k}" id="${k}" placeholder="${e[2]<=-18?'Ej. -19':'Ej. 3'}"></label>
-      <div><div class="fieldset-label">&nbsp;</div><div class="seg"><label><input type="checkbox" name="x${k}" id="x${k}" value="Sin uso"><span>Equipo sin uso hoy</span></label></div></div>
-    </div></div>
-    <div class="fix" data-fuera="${k}" hidden><label for="a${k}">Fuera de rango: ¿qué acción se tomó?</label>
-      <div class="obs-row" style="padding:0"><input type="text" id="a${k}" name="a${k}" placeholder="Ej. se ajustó el termostato y se trasladó el producto">${PHOTO_BTN(k)}</div></div>
-    <div class="thumbs" id="ph-${k}"></div></div>`;
+    <div class="eq-read">
+      <div class="grid2 tight">
+        <label class="f">Temperatura (°C) <span class="req">*</span><input type="number" step="0.1" min="-40" max="30" name="${k}" id="${k}" placeholder="${e.tipo==='C'?'Ej. -19':'Ej. 3'}"></label>
+        <div><div class="fieldset-label">&nbsp;</div><div class="seg"><label><input type="checkbox" name="x${k}" id="x${k}" value="Sin uso"><span>Equipo sin uso hoy</span></label></div></div>
+      </div>
+      <div data-foto="${k}">${PHOTO_REQ("f"+k, "Foto del termómetro (obligatoria)")}<div class="thumbs" id="ph-f${k}"></div></div>
+      <div class="fix" style="padding-left:0" data-fuera="${k}" hidden><label for="a${k}">Fuera de rango: ¿qué acción se tomó?</label>
+        <input type="text" id="a${k}" name="a${k}" placeholder="Ej. se ajustó el termostato y se trasladó el producto"></div>
+      ${extra && t==="m" ? `<div class="rp"><span></span><button type="button" class="btn small ghost danger" data-rm-eq="${e.id}">Quitar este equipo</button></div>` : ""}
+    </div></div>`;
+}
+function zonasHTML(t){
+  let n = 0;
+  return ZONAS_EQ.map(z=>{
+    const eqs = equipos().filter(e=>e.zona===z);
+    return `<div class="group-title">${esc(z)}</div>` + eqs.map(e=>eqHTML(t, e, ++n)).join("") +
+      `<div class="eq-add" data-add-box="${t}-${z}" hidden>
+         <label class="f">Nombre del equipo<input type="text" data-dyn="1" id="nn-${t}-${z}" placeholder="Ej. Nevera de postres"></label>
+         <div><div class="fieldset-label">Tipo</div><div class="seg">
+           <label><input type="radio" data-dyn="1" name="nt-${t}-${z}" value="R" checked><span>Nevera (0 a 4 °C)</span></label>
+           <label><input type="radio" data-dyn="1" name="nt-${t}-${z}" value="C"><span>Congelador (-18 °C o menos)</span></label></div></div>
+         <div class="rp"><button type="button" class="btn small ghost" data-add-cancel="${t}-${z}">Cancelar</button><button type="button" class="btn small primary" data-add-save="${t}|${z}">Guardar equipo</button></div>
+       </div>
+       <button type="button" class="btn small ghost" data-add-open="${t}-${z}">+ Agregar nevera o congelador en ${esc(z)}</button>`;
+  }).join("");
+}
+function renderDynamic(){
+  const vals = {};
+  $$("#lect-m input, #lect-t input").forEach(el=>{ if (el.dataset.dyn || !el.name) return; if (el.type==="checkbox"){ if (el.checked) vals[el.name]=true; } else if (el.type!=="file") vals[el.name]=el.value; });
+  ["m","t"].forEach(t=>{ const box=$("#lect-"+t); if (box) box.innerHTML = zonasHTML(t); });
+  Object.entries(vals).forEach(([k,v])=>{ const el=$(`#form [name="${k}"]`); if (!el) return; if (el.type==="checkbox") el.checked=!!v; else el.value=v; });
+  renderPhotos();
 }
 function lecturaPanel(step, t, titulo, hint){
   return `<div class="panel" data-step="${step}" hidden>
     <h2>${step+1}. ${titulo}</h2>
     <p class="hint">${hint}</p>
     <div class="result"><span class="lbl">Equipos dentro de rango</span><span class="pill" id="r-${t}">Sin datos</span></div>
-    ${EQUIPOS.map((_,i)=>eqHTML(i,t)).join("")}
-    <label class="f">Hora de la lectura<input type="time" id="h${t}" name="h${t}"></label>
+    <div id="lect-${t}"></div>
   </div>`;
 }
 function buildForm(){
@@ -335,70 +381,108 @@ function buildForm(){
       ${respHTML()}
     </div>
     <div class="notice" id="aviso-dia" hidden></div>
-    <p class="hint" style="margin:0">Registra la temperatura de cada equipo dos veces al día: en la mañana, antes del servicio, y en la tarde, después del servicio. Lo que llevas se guarda en este celular, así que puedes hacer la lectura de la mañana, cerrar y volver en la tarde. Genera el PDF al terminar la lectura de la tarde.</p>
+    <p class="hint" style="margin:0">Dos lecturas al día: en la mañana, antes del servicio, y en la tarde, después del servicio. En cada equipo escribe la temperatura y <b>toma la foto del termómetro con la cámara en ese momento</b>: la foto queda con la fecha y la hora grabadas, y esa es la hora de la lectura. No sirven fotos de la galería ni de otro momento.</p>
+    <p class="hint" style="margin:0">Lo que llevas se guarda en este celular, con las fotos. Puedes hacer la lectura de la mañana, cerrar y volver en la tarde. Genera el PDF al terminar la lectura de la tarde.</p>
   </div>
-  ${lecturaPanel(1, "m", "Lectura de la mañana", "Antes de abrir el servicio. Si un equipo está fuera de rango, escribe la acción y toma una foto del termómetro.")}
-  ${lecturaPanel(2, "t", "Lectura de la tarde", "Después del servicio.")}
+  ${lecturaPanel(1, "m", "Lectura de la mañana", "Antes de abrir el servicio. Si un equipo está fuera de rango, escribe la acción tomada. Si hay una nevera o un congelador que no está en la lista, agrégalo en su zona: queda guardado en este celular para los próximos días.")}
+  ${lecturaPanel(2, "t", "Lectura de la tarde", "Después del servicio. Toma de nuevo la foto del termómetro de cada equipo.")}
   <div class="panel" data-step="3" hidden>
     <h2>4. Resultado del día</h2>
     <div class="result"><span class="lbl">Lecturas conformes</span><span class="pill" id="r-pct">Sin datos</span></div>
     <div class="result"><span class="lbl">Lecturas fuera de rango</span><span class="pill" id="r-fuera">Sin datos</span></div>
+    <div class="result"><span class="lbl">Evidencia fotográfica</span><span class="pill" id="r-fotos">Sin datos</span></div>
     <div class="result"><span class="lbl">Concepto</span><span class="pill" id="r-con">Sin datos</span></div>
     <div class="result" style="flex-direction:column;align-items:stretch"><span class="lbl">Resumen automático</span><div class="chips" id="summary"></div></div>
     <label class="f">Observaciones<textarea id="obs" name="obs" placeholder="Ej. mantenimiento programado, equipo desocupado"></textarea></label>
     ${FIRMAS.map(f=>sigBlock(f.id, f.label, f.req)).join("")}
     <p class="legal">Meta: ${Math.round(META*100)} % de lecturas conformes. Un equipo que se sale de rango varias veces en el mes requiere mantenimiento y una acción en F-ME-12. Referencias de servicio: platos calientes > 60 °C; fríos < 8 °C; carnes en recepción < 4 °C.</p>
   </div>`;
+  renderDynamic();
 }
 function initValues(){ if (!$("#fecha").value) $("#fecha").value = todayISO(); }
+function onFormClick(b){
+  const d = b.dataset;
+  if (d.addOpen){ $(`[data-add-box="${d.addOpen}"]`).hidden=false; b.hidden=true; $(`#nn-${d.addOpen}`)?.focus(); return true; }
+  if (d.addCancel){ $(`[data-add-box="${d.addCancel}"]`).hidden=true; $(`[data-add-open="${d.addCancel}"]`).hidden=false; return true; }
+  if (d.addSave){
+    const [t, z] = d.addSave.split("|"); const nombre = ($(`#nn-${t}-${z}`).value||"").trim();
+    if (!nombre){ toast("Escribe el nombre del equipo."); return true; }
+    if (equipos().some(e=>e.nombre.toLowerCase()===nombre.toLowerCase())){ toast("Ya hay un equipo con ese nombre."); return true; }
+    const tipo = val(`nt-${t}-${z}`) || "R";
+    extras.push({id:"x"+Date.now().toString(36), zona:z, nombre, tipo}); saveExtras(); renderDynamic();
+    toast(`${nombre} agregado en ${z}. Queda guardado en este celular.`); return true;
+  }
+  if (d.rmEq){
+    if (!b.dataset.armed){ b.dataset.armed="1"; b.textContent="Toca otra vez para quitarlo"; setTimeout(()=>{ if(b.isConnected){ delete b.dataset.armed; b.textContent="Quitar este equipo"; } }, 4000); return true; }
+    extras = extras.filter(e=>e.id!==d.rmEq); saveExtras();
+    photos = photos.filter(p=>!p.item.endsWith("-"+d.rmEq)); renderDynamic(); return true;
+  }
+  return false;
+}
 function syncForm(){
   const dia = diaSemana(fv("fecha")); const av = $("#aviso-dia");
   if (dia==="Martes"||dia==="Miércoles"){ av.hidden=false; av.textContent=`La fecha cae ${dia.toLowerCase()}, día de descanso del restaurante. Si no hubo operación, no es necesario el registro.`; } else av.hidden=true;
-  ["m","t"].forEach(t=>EQUIPOS.forEach((e,i)=>{ const k=t+i; const box=$(`[data-fuera="${k}"]`); if (box) box.hidden = !(val("x"+k)!=="Sin uso" && fuera(fv(k), e)); }));
+  ["m","t"].forEach(t=>equipos().forEach(e=>{ const k=`${t}-${e.id}`; const off = val("x"+k)==="Sin uso";
+    const fb=$(`[data-fuera="${k}"]`); if (fb) fb.hidden = off || !fueraDe(fv(k), e);
+    const ft=$(`[data-foto="${k}"]`); if (ft) ft.hidden = off; }));
 }
-function lectura(t, i){
-  const k=t+i, e=EQUIPOS[i], v=fv(k), off = val("x"+k)==="Sin uso";
-  const st = off ? "Sin uso" : v==="" ? "" : fuera(v,e) ? (fv("a"+k) ? "Fuera-corregido" : "FUERA DE RANGO") : "OK";
-  return {v, st, accion: fv("a"+k)};
+function lectura(t, e){
+  const k=`${t}-${e.id}`, v=fv(k), off = val("x"+k)==="Sin uso";
+  const fotos = photosOf("f"+k).filter(p=>!p.late);
+  const hora = fotos.length ? fmtHM(fotos[0].ts) : "";
+  if (off) return {v:"", st:"Sin uso", hora:"", accion:""};
+  if (v==="") return {v, st:"", hora, accion:fv("a"+k)};
+  const fuera = fueraDe(v, e);
+  const st = !fotos.length ? "FALTA FOTO" : fuera ? (fv("a"+k) ? "Fuera-corregido" : "FUERA DE RANGO") : "OK";
+  return {v, st, hora, accion:fv("a"+k), fuera};
 }
 function stepDone(i){
   if (i===0) return !!(fv("fecha") && fv("responsable"));
-  if (i===1||i===2){ const t = i===1?"m":"t"; return EQUIPOS.every((_,k)=>{ const s=lectura(t,k).st; return s && s!=="FUERA DE RANGO"; }); }
+  if (i===1||i===2){ const t = i===1?"m":"t"; return equipos().every(e=>{ const s=lectura(t,e).st; return s==="OK"||s==="Fuera-corregido"||s==="Sin uso"; }); }
   if (i===3) return sigHasInk("sig-resp");
   return false;
 }
 function collect(){
-  const d = {fecha:fv("fecha"), dia:diaSemana(fv("fecha")), responsable:fv("responsable"), cargo:fv("cargo"), obs:fv("obs"), hm:fv("hm"), ht:fv("ht")};
-  d.equipos = EQUIPOS.map((e,i)=>({equipo:e[0], rango:rango(e), m:lectura("m",i), t:lectura("t",i)}));
+  const d = {fecha:fv("fecha"), dia:diaSemana(fv("fecha")), responsable:fv("responsable"), cargo:fv("cargo"), obs:fv("obs")};
+  d.equipos = equipos().map(e=>({zona:e.zona, equipo:e.nombre, tipo:e.tipo, rango:TIPOS[e.tipo].txt, m:lectura("m",e), t:lectura("t",e)}));
   return d;
 }
 function compute(d){
   const r = {}; const all = d.equipos.flatMap(e=>[e.m, e.t]);
-  const leidas = all.filter(x=>x.st && x.st!=="Sin uso");
-  r.lecturas = leidas.length; r.ok = leidas.filter(x=>x.st==="OK").length;
-  r.fuera = leidas.filter(x=>x.st!=="OK").length; r.pend = leidas.filter(x=>x.st==="FUERA DE RANGO").length;
-  r.faltan = all.filter(x=>!x.st).length;
+  const leidas = all.filter(x=>x.v!=="" && x.st!=="Sin uso");
+  r.lecturas = leidas.length;
+  r.ok = leidas.filter(x=>!x.fuera).length;
+  r.fuera = leidas.filter(x=>x.fuera).length;
+  r.pend = leidas.filter(x=>x.st==="FUERA DE RANGO").length;
+  r.sinFoto = leidas.filter(x=>x.st==="FALTA FOTO").length;
+  r.faltan = all.filter(x=>x.v==="" && x.st!=="Sin uso").length;
   r.pct = r.lecturas ? r.ok/r.lecturas : null;
-  r.porT = {m:null,t:null};
-  ["m","t"].forEach(t=>{ const l=d.equipos.map(e=>e[t]).filter(x=>x.st && x.st!=="Sin uso"); r.porT[t] = l.length ? l.filter(x=>x.st==="OK").length/l.length : null; });
-  r.eqFuera = d.equipos.filter(e=>[e.m,e.t].some(x=>x.st && x.st!=="OK" && x.st!=="Sin uso")).map(e=>e.equipo);
-  r.concepto = !r.lecturas ? "" : r.pend ? `ACCIÓN PENDIENTE: ${pl(r.pend,"lectura","lecturas")} fuera de rango sin acción` : r.faltan ? `INCOMPLETO: ${pl(r.faltan,"lectura","lecturas")} por registrar` : r.pct>=META ? "CONFORME" : "NO CONFORME: abrir acción en F-ME-12";
+  r.porT = {};
+  ["m","t"].forEach(t=>{ const l=d.equipos.map(e=>e[t]).filter(x=>x.v!=="" && x.st!=="Sin uso"); r.porT[t] = l.length ? l.filter(x=>!x.fuera).length/l.length : null; });
+  r.eqFuera = d.equipos.filter(e=>[e.m,e.t].some(x=>x.fuera)).map(e=>e.equipo);
+  r.concepto = !r.lecturas ? "" : r.sinFoto ? `INCOMPLETO: ${pl(r.sinFoto,"lectura","lecturas")} sin foto del termómetro`
+    : r.pend ? `ACCIÓN PENDIENTE: ${pl(r.pend,"lectura","lecturas")} fuera de rango sin acción`
+    : r.faltan ? `INCOMPLETO: ${pl(r.faltan,"lectura","lecturas")} por registrar`
+    : r.pct>=META ? "CONFORME" : "NO CONFORME: abrir acción en F-ME-12";
   return r;
 }
 const pctCls = v => v==null ? "" : v>=META ? "ok" : v>=0.8 ? "mid" : "bad";
 const conCls = c => !c ? "" : c==="CONFORME" ? "ok" : c.startsWith("INCOMPLETO") ? "mid" : "bad";
-const stCls = s => s==="OK" ? "ok" : s==="FUERA DE RANGO" ? "bad" : s==="Fuera-corregido" ? "mid" : s==="Sin uso" ? "" : "";
+const stCls = s => s==="OK" ? "ok" : (s==="FUERA DE RANGO"||s==="FALTA FOTO") ? "bad" : s==="Fuera-corregido" ? "mid" : "";
 function renderResults(r){
   const d = collect();
-  d.equipos.forEach((e,i)=>["m","t"].forEach(t=>setPill(`re-${t}${i}`, e[t].st ? (e[t].st==="Sin uso" ? "Sin uso" : `${e[t].v||""} °C · ${e[t].st}`.replace(/^ °C · /,"")) : "Sin lectura", stCls(e[t].st))));
+  equipos().forEach((e,i)=>["m","t"].forEach(t=>{ const x=d.equipos[i][t];
+    setPill(`re-${t}-${e.id}`, x.st==="Sin uso" ? "Sin uso" : x.v==="" ? (x.hora?`Foto ${x.hora} · falta °C`:"Sin lectura") : `${x.v} °C${x.hora?" · "+x.hora:""} · ${x.st}`, stCls(x.st)); }));
   ["m","t"].forEach(t=>setPill("r-"+t, pct(r.porT[t]), pctCls(r.porT[t])));
   setPill("r-pct", r.lecturas ? `${pct(r.pct)} (${r.ok} de ${r.lecturas})` : "Sin datos", pctCls(r.pct));
   setPill("r-fuera", r.lecturas ? (r.fuera ? `${r.fuera}: ${r.eqFuera.join(", ")}` : "Ninguna") : "Sin datos", r.fuera ? "bad" : r.lecturas ? "ok" : "");
+  setPill("r-fotos", r.lecturas ? (r.sinFoto ? `Faltan ${r.sinFoto} fotos` : "Completa, con hora") : "Sin datos", r.sinFoto ? "bad" : r.lecturas ? "ok" : "");
   setPill("r-con", r.concepto || "Sin datos", conCls(r.concepto));
 }
 function summaryChips(r){
   return `<span class="pill ${pctCls(r.pct)}">Conformidad ${pct(r.pct)}</span>
   <span class="pill ${r.fuera?'bad':'ok'}">Fuera de rango ${r.fuera}</span>
+  ${r.sinFoto?`<span class="pill bad">Sin foto ${r.sinFoto}</span>`:""}
   ${r.faltan?`<span class="pill mid">Faltan ${r.faltan} lecturas</span>`:""}
   <span class="pill ${conCls(r.concepto)}">${esc(r.concepto||"Sin concepto")}</span>`;
 }
@@ -406,27 +490,33 @@ function validate(d, r){
   const f = [];
   if (!d.fecha) f.push("fecha"); if (!d.responsable) f.push("responsable");
   if (f.length){ go(0); return f; }
-  if (r.faltan){ f.push(`${r.faltan} lecturas (o marcar el equipo como sin uso)`); go(d.equipos.some(e=>!e.m.st)?1:2); }
-  if (r.pend){ f.push(`la acción de ${r.pend} lecturas fuera de rango`); go(d.equipos.some(e=>e.m.st==="FUERA DE RANGO")?1:2); }
+  const enM = s => d.equipos.some(e=>s(e.m));
+  if (r.faltan){ f.push(`${pl(r.faltan,"lectura","lecturas")} (o marcar el equipo sin uso)`); go(enM(x=>x.v==="" && x.st!=="Sin uso")?1:2); }
+  if (r.sinFoto){ f.push(`la foto del termómetro en ${pl(r.sinFoto,"lectura","lecturas")}`); go(enM(x=>x.st==="FALTA FOTO")?1:2); }
+  if (r.pend){ f.push(`la acción de ${pl(r.pend,"lectura","lecturas")} fuera de rango`); go(enM(x=>x.st==="FUERA DE RANGO")?1:2); }
   return f;
 }
 const doneLine = d => `${fmtDate(d.fecha)} · ${d.responsable}`;
 const fileTag = d => `Temperaturas ${d.fecha}`;
-const photoCaption = key => { const t=key[0], i=+key.slice(1); return `${EQUIPOS[i]?.[0]||""} | lectura de la ${t==="m"?"mañana":"tarde"}`; };
+const photoCaption = key => { const t=key[1], id=key.slice(3); const e=equipos().find(x=>x.id===id); return `${e?e.nombre:"Equipo"} · ${LECT[t]||""}`; };
 async function pdfBody(P, d, r){
   P.sec("1. DATOS DEL DÍA");
   P.table({body:[
     [{content:"N.° de registro",styles:P.L}, pdfTxt(d.registro), {content:"Fecha",styles:P.L}, `${fmtDate(d.fecha)} (${pdfTxt(d.dia)})`],
-    [{content:"Responsable",styles:P.L}, {content:`${pdfTxt(d.responsable)} (${pdfTxt(d.cargo)})`, colSpan:3}],
-    [{content:"Hora lectura mañana",styles:P.L}, pdfTxt(d.hm||"-"), {content:"Hora lectura tarde",styles:P.L}, pdfTxt(d.ht||"-")]
+    [{content:"Responsable",styles:P.L}, {content:`${pdfTxt(d.responsable)} (${pdfTxt(d.cargo)})`, colSpan:3}]
   ]});
-  P.sec("2. LECTURAS POR EQUIPO");
-  const st = x => x.st==="Sin uso" ? "Sin uso" : x.st ? x.st : "-";
-  P.table({head:[["N.°","Equipo","Rango aceptable","Mañana (°C)","Estado","Tarde (°C)","Estado","Acción tomada"]],
-    body: d.equipos.map((e,i)=>[i+1, pdfTxt(e.equipo), pdfTxt(e.rango), e.m.st==="Sin uso"?"-":(e.m.v||"-"), st(e.m), e.t.st==="Sin uso"?"-":(e.t.v||"-"), st(e.t),
-      pdfTxt([e.m.accion&&`Mañana: ${e.m.accion}`, e.t.accion&&`Tarde: ${e.t.accion}`].filter(Boolean).join(" | "))]),
-    columnStyles:{0:{cellWidth:8,halign:"center"},2:{cellWidth:24,halign:"center"},3:{cellWidth:18,halign:"center",fontStyle:"bold"},4:{cellWidth:24,halign:"center"},5:{cellWidth:16,halign:"center",fontStyle:"bold"},6:{cellWidth:24,halign:"center"},7:{cellWidth:44}},
-    didParseCell:h=>{ if(h.section==="body" && (h.column.index===4||h.column.index===6)){ const c=P.color(h.cell.raw); if(c) h.cell.styles.fillColor=c; } }});
+  P.sec("2. LECTURAS POR EQUIPO (la hora es la de la foto del termómetro)");
+  const st = x => x.st ? x.st : "-";
+  const body = [];
+  ZONAS_EQ.forEach(z=>{ const eqs = d.equipos.filter(e=>e.zona===z); if (!eqs.length) return;
+    body.push([{content:z.toUpperCase(), colSpan:9, styles:{fillColor:P.SECF, fontStyle:"bold"}}]);
+    eqs.forEach(e=>body.push([pdfTxt(e.equipo), pdfTxt(e.rango),
+      e.m.v||"-", e.m.hora||"-", st(e.m), e.t.v||"-", e.t.hora||"-", st(e.t),
+      pdfTxt([e.m.accion&&e.m.fuera&&`M: ${e.m.accion}`, e.t.accion&&e.t.fuera&&`T: ${e.t.accion}`].filter(Boolean).join(" | "))])); });
+  P.table({head:[["Equipo","Rango","Mañana °C","Hora","Estado","Tarde °C","Hora","Estado","Acción tomada"]], body,
+    styles:{...P.base.styles, fontSize:7.5},
+    columnStyles:{1:{cellWidth:20,halign:"center"},2:{cellWidth:14,halign:"center",fontStyle:"bold"},3:{cellWidth:11,halign:"center"},4:{cellWidth:24,halign:"center"},5:{cellWidth:14,halign:"center",fontStyle:"bold"},6:{cellWidth:11,halign:"center"},7:{cellWidth:24,halign:"center"},8:{cellWidth:38}},
+    didParseCell:h=>{ if(h.section==="body" && (h.column.index===4||h.column.index===7)){ const c=P.color(h.cell.raw); if(c) h.cell.styles.fillColor=c; } }});
   P.sec("3. RESULTADO DEL DÍA");
   P.table({head:[["Lecturas","Conformes","Fuera de rango","% conformidad","Equipos con novedad"]],
     body:[[String(r.lecturas), String(r.ok), String(r.fuera), pct(r.pct), pdfTxt(r.eqFuera.join(", ")||"Ninguno")]], bodyStyles:{halign:"center", fontStyle:"bold"}});
@@ -455,6 +545,10 @@ function countChecked(re){ return $$('#form input[type=radio]:checked').filter(x
 /* Campos que aparecen según la respuesta: data-show="nombre=valor|valor" */
 function syncDyn(){
   $$("#form [data-show]").forEach(el=>{ const [n,v]=el.dataset.show.split("="); el.hidden = !v.split("|").includes(val(n)); });
+  $$("#form .ph-req").forEach(el=>{ const item = el.querySelector("input").dataset.item; const ok = photoOK(item);
+    const sp = el.querySelector("span"); if (!el.dataset.txt) el.dataset.txt = sp.textContent;
+    const last = photosOf(item).filter(p=>!p.late).slice(-1)[0];
+    el.classList.toggle("ok", ok); sp.textContent = ok ? `Foto tomada ${fmtHM(last.ts)} · tocar para repetir` : el.dataset.txt; });
   if (typeof syncForm==="function") syncForm();
 }
 function refreshResults(){
@@ -464,14 +558,24 @@ function refreshResults(){
   return {d, r};
 }
 
-/* ---------- Fotos ---------- */
-let photos = []; // {key, item, data, url, status}
-const PHOTO_PER_ITEM = 2, LOCAL_MAX = 900, LOCAL_Q = 0.65, LOCAL_TOTAL = 18;
-async function compress(file, maxSide, q){
+/* ---------- Fotos con fecha y hora grabadas ---------- */
+let photos = []; // {key, item, data, url, status, ts, fts, late}
+const PHOTO_PER_ITEM = 2, LOCAL_MAX = 1000, LOCAL_Q = 0.62, LOCAL_TOTAL = 60, LATE_MIN = 15;
+const fmtTS = t => { const d=new Date(t); const p=n=>String(n).padStart(2,"0"); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+const fmtHM = t => { const d=new Date(t); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
+/* Reduce la foto y le graba abajo una franja con el formato, el ítem, la fecha y la hora de la toma */
+async function compress(file, maxSide, q, lines){
   const bmp = await new Promise((res, rej) => { const img = new Image(); img.onload=()=>res(img); img.onerror=rej; img.src=URL.createObjectURL(file); });
   const s = Math.min(1, maxSide/Math.max(bmp.naturalWidth, bmp.naturalHeight));
   const c = document.createElement("canvas"); c.width=Math.round(bmp.naturalWidth*s); c.height=Math.round(bmp.naturalHeight*s);
-  c.getContext("2d").drawImage(bmp,0,0,c.width,c.height); URL.revokeObjectURL(bmp.src);
+  const x = c.getContext("2d"); x.drawImage(bmp,0,0,c.width,c.height); URL.revokeObjectURL(bmp.src);
+  if (lines && lines.length){
+    const fs = Math.max(16, Math.round(c.width/22)), lh = Math.round(fs*1.3), pad = Math.round(fs*0.5);
+    const h = lh*lines.length + pad*2;
+    x.fillStyle = "rgba(0,0,0,.62)"; x.fillRect(0, c.height-h, c.width, h);
+    x.fillStyle = "#fff"; x.textBaseline = "top";
+    lines.forEach((t,i)=>{ x.font = `${i===0?"700 ":""}${fs}px Arial, sans-serif`; x.fillText(t, pad, c.height-h+pad+i*lh, c.width-pad*2); });
+  }
   return c.toDataURL("image/jpeg",q);
 }
 async function addPhotos(files, item){
@@ -479,23 +583,32 @@ async function addPhotos(files, item){
     if (!file.type.startsWith("image/")) continue;
     if (photos.filter(p=>p.item===item).length >= PHOTO_PER_ITEM){ toast(`Máximo ${PHOTO_PER_ITEM} fotos por ítem.`); break; }
     if (photos.length >= LOCAL_TOTAL){ toast(`Máximo ${LOCAL_TOTAL} fotos por registro.`); break; }
-    const p = {key:Math.random().toString(36).slice(2), item, url:"", status:"Procesando…"}; photos.push(p); renderPhotos();
-    try{ p.data = await compress(file, LOCAL_MAX, LOCAL_Q); p.url = p.data; p.status = "Lista"; }
+    const ts = Date.now(), fts = file.lastModified || ts;
+    const late = Math.abs(ts - fts) > LATE_MIN*60000;
+    const p = {key:Math.random().toString(36).slice(2), item, url:"", status:"Procesando…", ts, fts, late}; photos.push(p); renderPhotos();
+    const lines = [`EL PATIO VILLA DE LEYVA · ${CTRL.codigo}`, `${photoCaption(item)}`, `Tomada: ${fmtTS(ts)}${late?`  ·  ARCHIVO DE ${fmtTS(fts)}`:""}`];
+    try{ p.data = await compress(file, LOCAL_MAX, LOCAL_Q, lines); p.url = p.data; p.status = "Lista"; }
     catch(e){ p.status = "No se pudo cargar"; p.failed = true; }
-    renderPhotos(); renderSteps();
+    if (late) toast(`Esa foto no es de este momento (es de ${fmtTS(fts)}). Toma la foto en vivo con la cámara.`, 5200);
+    renderPhotos(); syncDyn(); refreshResults(); renderSteps(); queueDraft();
   }
 }
+const photosOf = item => photos.filter(p=>p.item===item && p.data);
+const photoOK = item => photosOf(item).some(p=>!p.late);
 function renderPhotos(){
   $$("#form .thumbs").forEach(el=>el.innerHTML="");
   photos.forEach(p=>{
     const box = document.getElementById("ph-"+p.item); if (!box) return;
     const el = document.createElement("div"); el.className="th";
+    const st = p.status!=="Lista" ? p.status : p.late ? "No es de ahora" : fmtHM(p.ts);
     el.innerHTML = `${p.url?`<img alt="Foto" src="${esc(p.url)}">`:`<div class="th-ph">…</div>`}
-      ${p.status==="Lista"?"":`<span class="st" style="${p.failed?'color:var(--bad)':''}">${esc(p.status)}</span>`}
+      <span class="st" style="${p.failed||p.late?'color:var(--bad);font-weight:700':''}">${esc(st)}</span>
       <button type="button" aria-label="Quitar foto" data-rm-photo="${p.key}">×</button>`;
     box.appendChild(el);
   });
 }
+/* Botón grande de foto obligatoria */
+const PHOTO_REQ = (key, txt) => `<label class="ph-btn ph-req" id="pb-${key}"><input type="file" accept="image/*" capture="environment" data-item="${key}" aria-label="${esc(txt)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span>${esc(txt)}</span></label>`;
 
 /* ---------- Firmas ---------- */
 const pads = {};
@@ -531,8 +644,14 @@ function sigBlock(id, label, req){
   </div>`;
 }
 
-/* ---------- Borrador local (solo en este celular) ---------- */
-function saveDraft(){
+/* ---------- Borrador local (solo en este celular). Las fotos van en IndexedDB para que quepan ---------- */
+const IDB = (()=>{ let dbp;
+  const db = () => dbp || (dbp = new Promise((res, rej)=>{ const r = indexedDB.open("elpatio-formularios", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }));
+  const tx = (mode, fn) => db().then(d => new Promise((res, rej)=>{ const t = d.transaction("kv", mode); const q = fn(t.objectStore("kv")); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }));
+  return { get: k => tx("readonly", s=>s.get(k)), set: (k,v) => tx("readwrite", s=>s.put(v,k)), del: k => tx("readwrite", s=>s.delete(k)) };
+})();
+async function saveDraft(){
   try{
     const vals={};
     $$("#form input,#form textarea,#form select").forEach(el=>{ if(!el.name||el.dataset.dyn) return;
@@ -540,24 +659,26 @@ function saveDraft(){
       else if(el.type==="checkbox"){ (vals[el.name]=vals[el.name]||[]); if(el.checked) vals[el.name].push(el.value); }
       else if(el.type!=="file") vals[el.name]=el.value; });
     const extra = typeof draftExtra==="function" ? draftExtra() : null;
-    localStorage.setItem(CTRL.draftKey, JSON.stringify({vals, extra, photos: photos.filter(p=>p.data).map(({key,item,data})=>({key,item,data}))}));
-  }catch(e){}
+    localStorage.setItem(CTRL.draftKey, JSON.stringify({vals, extra, t:Date.now()}));
+    await IDB.set(CTRL.draftKey+"-fotos", photos.filter(p=>p.data).map(({key,item,data,ts,fts,late})=>({key,item,data,ts,fts,late})));
+  }catch(e){ toast("No se pudo guardar el borrador en este celular."); }
 }
-function loadDraft(){
+async function loadDraft(){
   try{
     const raw = localStorage.getItem(CTRL.draftKey); if(!raw) return false;
-    const {vals, extra, photos:ph} = JSON.parse(raw);
+    const {vals, extra} = JSON.parse(raw);
     if (typeof restoreExtra==="function") restoreExtra(extra);
     Object.entries(vals||{}).forEach(([k,v])=>{
       $$(`#form [name="${k}"]`).forEach(el=>{
         if(el.type==="radio") el.checked = el.value===v;
         else if(el.type==="checkbox") el.checked = Array.isArray(v) && v.includes(el.value);
         else el.value = v; }); });
-    photos = (ph||[]).filter(p=>p.item && p.data).map(p=>({...p, url:p.data, status:"Lista"}));
+    let ph = []; try{ ph = await IDB.get(CTRL.draftKey+"-fotos") || []; }catch(e){}
+    photos = ph.filter(p=>p.item && p.data).map(p=>({...p, url:p.data, status:"Lista"}));
     return true;
   }catch(e){ return false; }
 }
-function clearDraft(){ try{ localStorage.removeItem(CTRL.draftKey); }catch(e){} }
+function clearDraft(){ try{ localStorage.removeItem(CTRL.draftKey); IDB.del(CTRL.draftKey+"-fotos"); }catch(e){} }
 let draftT; function queueDraft(){ clearTimeout(draftT); draftT=setTimeout(saveDraft, 500); }
 
 /* ---------- Terminar: generar PDF ---------- */
@@ -572,7 +693,7 @@ async function finish(){
   saving = true; $("#next").disabled = true; $("#next").textContent = "Generando PDF…";
   const fecha = d.fecha || todayISO();
   const doc = {...d, resultados:r,
-    fotos: photos.filter(p=>p.data).map(p=>({data:p.data, item:p.item})),
+    fotos: photos.filter(p=>p.data).map(p=>({data:p.data, item:p.item, ts:p.ts, fts:p.fts, late:p.late})),
     firmas: Object.fromEntries(FIRMAS.filter(f=>sigHasInk(f.id)).map(f=>[f.id, pads[f.id].png()])),
     creado: new Date().toISOString(),
     registro: `${CTRL.prefijo}-${fecha.replace(/-/g,"")}-${Math.random().toString(36).slice(2,6).toUpperCase()}`};
@@ -636,23 +757,23 @@ async function makePDF(d){
   // Registro fotográfico
   const fotos = (d.fotos||[]);
   if (fotos.length){
-    P.sec("REGISTRO FOTOGRÁFICO");
-    const gap = 4, cols = 3, cw = (W-2*M-gap*(cols-1))/cols, ch = cw*0.75;
+    P.sec("REGISTRO FOTOGRÁFICO (hora de la toma; la fecha y la hora también quedan grabadas en cada foto)");
+    const gap = 4, cols = CTRL.fotoCols || 3, cw = (W-2*M-gap*(cols-1))/cols, ch = cw*0.75;
     for (let i=0;i<fotos.length;i++){
       const col = i%cols; if (col===0) P.ensure(ch+11);
       const x = M + col*(cw+gap);
       const img = await loadImg(fotos[i].data);
-      doc.setDrawColor(...LINE); doc.setLineWidth(0.15); doc.rect(x, P.y, cw, ch+8);
+      doc.setDrawColor(...LINE); doc.setLineWidth(0.15); doc.rect(x, P.y, cw, ch+9);
       if (img){ const s=Math.min((cw-2)/img.w, (ch-2)/img.h); const iw=img.w*s, ih=img.h*s;
         doc.addImage(img.data, "JPEG", x+(cw-iw)/2, P.y+1+(ch-2-ih)/2, iw, ih); }
       doc.setFontSize(7); doc.setTextColor(40);
-      doc.text(doc.splitTextToSize(`Foto ${i+1} | ${pdfTxt(photoCaption(fotos[i].item))}`, cw-3)[0], x+1.5, P.y+ch+5.2);
+      doc.text(doc.splitTextToSize(`${i+1}. ${fotos[i].ts?fmtHM(fotos[i].ts)+" | ":""}${pdfTxt(photoCaption(fotos[i].item))}${fotos[i].late?" | NO ES DE AHORA":""}`, cw-3).slice(0,2), x+1.5, P.y+ch+4.2);
       if (col===cols-1 || i===fotos.length-1) P.y += ch+12;
     }
   }
 
   // Firmas
-  P.sec("FIRMAS");
+  P.ensure(58); P.sec("FIRMAS");
   P.y += 2; P.ensure(44);
   const fs = FIRMAS; const n = Math.max(2, fs.length); const g = 6; const sw = (W-2*M-g*(n-1))/n;
   fs.forEach((f,i)=>{
@@ -701,7 +822,7 @@ document.addEventListener("input", e=>{
 });
 document.addEventListener("change", e=>{
   const t=e.target;
-  if (t.dataset.item){ addPhotos([...t.files], t.dataset.item).then(queueDraft); t.value=""; return; }
+  if (t.dataset.item){ addPhotos([...t.files], t.dataset.item); t.value=""; return; }
   if (t.closest("#form")){ syncDyn(); refreshResults(); renderSteps(); queueDraft(); }
 });
 document.addEventListener("click", e=>{
@@ -714,17 +835,19 @@ document.addEventListener("click", e=>{
   else if (b.id==="dl-pdf"){ downloadPDF(); }
   else if (b.id==="edit-again"){ showDone(false); }
   else if (b.id==="new-eval"){ if (b.dataset.armed){ clearDraft(); resetForm(); showDone(false); toast("Formulario listo para un registro nuevo."); } else { b.dataset.armed="1"; b.textContent="Toca otra vez para borrar y empezar"; setTimeout(()=>{ delete b.dataset.armed; b.textContent="Empezar un registro nuevo"; }, 4000); } }
-  else if (b.dataset.rmPhoto){ photos=photos.filter(p=>p.key!==b.dataset.rmPhoto); renderPhotos(); renderSteps(); queueDraft(); }
+  else if (b.dataset.rmPhoto){ photos=photos.filter(p=>p.key!==b.dataset.rmPhoto); renderPhotos(); syncDyn(); refreshResults(); renderSteps(); queueDraft(); }
   else if (b.dataset.clear){ pads[b.dataset.clear].clear(); }
 });
 document.addEventListener("error", e=>{ const t=e.target; if(t.tagName==="IMG" && t.closest(".thumbs")){ t.replaceWith(Object.assign(document.createElement("div"),{textContent:"Foto no disponible"})); } }, true);
 
 /* ---------- Arranque ---------- */
-buildForm();
-const restored = loadDraft();
-initValues(restored);
-wire();
-if (restored) toast("Se recuperó lo que llevabas diligenciado en este celular.");
+(async ()=>{
+  buildForm();
+  const restored = await loadDraft();
+  initValues(restored);
+  wire();
+  if (restored) toast("Se recuperó lo que llevabas diligenciado en este celular.");
+})();
 </script>
 </body>
 </html>
