@@ -338,7 +338,7 @@ function eqHTML(t, e, n){
       <span class="pill" id="re-${k}">Sin lectura</span></div>
     <div class="eq-read">
       <div class="grid2 tight">
-        <label class="f">Estado del equipo<select name="x${k}" id="x${k}">${ESTADOS.map(o=>`<option>${o}</option>`).join("")}</select></label>
+        <label class="f">Estado del equipo<select name="x${k}" id="x${k}">${ESTADOS.map((o,i)=>`<option ${i?"":"selected"}>${o}</option>`).join("")}</select></label>
         <label class="f" data-temp="${k}">Temperatura (°C)<input type="number" step="0.1" min="-40" max="30" name="${k}" id="${k}" placeholder="${e.tipo==='C'?'Ej. -19':'Ej. 3'}"></label>
       </div>
       <div class="fix" style="padding-left:0" data-nov="${k}" hidden><label for="n${k}">Novedad del equipo</label>
@@ -466,6 +466,8 @@ function onDynInput(el){
   saveCfg(); renderDynamic.keepCfg = el.dataset.cfg!=="tipo"; renderDynamic(); renderDynamic.keepCfg = false;
 }
 function syncForm(){
+  /* El estado siempre queda preseleccionado en «En funcionamiento» (también al recuperar borradores anteriores) */
+  $$('#form select[name^="xm-"], #form select[name^="xt-"]').forEach(el=>{ if (!ESTADOS.includes(el.value)) el.value = ESTADOS[0]; });
   const dia = diaSemana(fv("fecha")); const av = $("#aviso-dia");
   if (dia==="Martes"||dia==="Miércoles"){ av.hidden=false; av.textContent=`La fecha cae ${dia.toLowerCase()}, día de descanso del restaurante. Si no hubo operación, no es necesario el registro.`; } else av.hidden=true;
   ["m","t"].forEach(t=>equipos().forEach(e=>{ const k=`${t}-${e.id}`; const off = !isOp(fv("x"+k));
