@@ -9,6 +9,9 @@ Cada empresa tiene su carpeta y cada formulario su subcarpeta con el código del
 ```
 /                         página de inicio (sin listado de empresas)
 /clarisa/sst-fr-41/       Clarisa Cloud · SST-FR-41 Inspección y evaluación de puesto de trabajo
+/el-patio/f-sr-01/        El Patio Villa de Leyva · F-SR-01 Checklist de apertura
+/el-patio/f-pn-03/        El Patio Villa de Leyva · F-PN-03 Control de calidad previo a la salida de platos
+/el-patio/f-pn-05/        El Patio Villa de Leyva · F-PN-05 Registro de temperaturas de equipos de frío
 ```
 
 Enlace de cada formulario: `https://gestorempresarial9s-prog.github.io/formularios-9s/<empresa>/<codigo>/`
