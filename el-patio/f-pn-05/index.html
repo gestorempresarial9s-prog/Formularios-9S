@@ -322,8 +322,8 @@ const TIPO_NOM = {R:"Nevera", C:"Congelador"};
 function nextName(tipo){ const base = TIPO_NOM[tipo]; const nums = equipos().map(e=>{ const m = e.nombre.match(new RegExp("^"+base+"\\s+(\\d+)$","i")); return m ? +m[1] : 0; }); return `${base} ${Math.max(0,...nums)+1}`; }
 const LECT = {m:"mañana", t:"tarde"};
 /* Estado del equipo en cada lectura. Si no está operativo, no lleva temperatura ni foto: se reporta la novedad. */
-const ESTADOS = ["Operativo","En mantenimiento","En reparación","Fuera de servicio","Sin uso hoy"];
-const isOp = est => !est || est==="Operativo";
+const ESTADOS = ["En uso","En mantenimiento","En reparación","Fuera de servicio","Sin uso hoy"];
+const isOp = est => !est || est==="En uso" || est==="Operativo";
 /* Zonas a cargo de quien diligencia: solo esas se muestran y van al PDF. */
 const zonaSel = zid => { const el=$(`#form [name="zsel-${zid}"]`); return !el || el.checked; };
 const eqsSel = () => equipos().filter(e=>zonaSel(e.zid));
@@ -417,7 +417,7 @@ function buildForm(){
     <p class="hint" style="margin:.2rem 0 .5rem">Marca solo las zonas que te corresponden. Cada líder registra su área; los equipos que no diligencies quedan «sin registro» y no impiden generar el PDF.</p>
     <div id="zsel"></div>
     <div class="notice" id="aviso-dia" hidden></div>
-    <p class="hint" style="margin:0">Dos lecturas al día: en la mañana, antes del servicio, y en la tarde, después del servicio. En cada equipo indica el estado. Si está operativo, escribe la temperatura y <b>toma la foto del termómetro con la cámara en ese momento</b>: la foto queda con la fecha y la hora grabadas, y esa es la hora de la lectura. No sirven fotos de la galería ni de otro momento. Si el equipo está en mantenimiento, en reparación o fuera de servicio, selecciónalo y describe la novedad: no requiere temperatura ni foto.</p>
+    <p class="hint" style="margin:0">Dos lecturas al día: en la mañana, antes del servicio, y en la tarde, después del servicio. En cada equipo indica el estado. Viene marcado «En uso»; escribe la temperatura y <b>toma la foto del termómetro con la cámara en ese momento</b>: la foto queda con la fecha y la hora grabadas, y esa es la hora de la lectura. No sirven fotos de la galería ni de otro momento. Solo si el equipo está en mantenimiento, en reparación o fuera de servicio, cambia el estado y describe la novedad: no requiere temperatura ni foto.</p>
     <p class="hint" style="margin:0">Lo que llevas se guarda en este celular, con las fotos. Puedes hacer la lectura de la mañana, cerrar y volver en la tarde. Genera el PDF al terminar tus lecturas.</p>
   </div>
   ${cfgPanel()}
@@ -475,7 +475,7 @@ function syncForm(){
     const ft=$(`[data-foto="${k}"]`); if (ft) ft.hidden = off; }));
 }
 function lectura(t, e){
-  const k=`${t}-${e.id}`, v=fv(k), est = fv("x"+k) || "Operativo";
+  const k=`${t}-${e.id}`, v=fv(k), est = fv("x"+k) || "En uso";
   const fotos = photosOf("f"+k).filter(p=>!p.late);
   const hora = fotos.length ? fmtHM(fotos[0].ts) : "";
   if (!isOp(est)) return {v:"", st:est, nov:true, hora:"", accion:fv("n"+k)};
