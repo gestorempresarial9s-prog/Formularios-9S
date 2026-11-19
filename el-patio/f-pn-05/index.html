@@ -321,6 +321,12 @@ const equipos = () => cfg.zonas.flatMap(z => z.equipos.map(e=>({...e, zona:z.nom
 const TIPO_NOM = {R:"Nevera", C:"Congelador"};
 function nextName(tipo){ const base = TIPO_NOM[tipo]; const nums = equipos().map(e=>{ const m = e.nombre.match(new RegExp("^"+base+"\\s+(\\d+)$","i")); return m ? +m[1] : 0; }); return `${base} ${Math.max(0,...nums)+1}`; }
 const LECT = {m:"mañana", t:"tarde"};
+/* Estado del equipo en cada lectura. Si no está operativo, no lleva temperatura ni foto: se reporta la novedad. */
+const ESTADOS = ["Operativo","En mantenimiento","En reparación","Fuera de servicio","Sin uso hoy"];
+const isOp = est => !est || est==="Operativo";
+/* Zonas a cargo de quien diligencia: solo esas se muestran y van al PDF. */
+const zonaSel = zid => { const el=$(`#form [name="zsel-${zid}"]`); return !el || el.checked; };
+const eqsSel = () => equipos().filter(e=>zonaSel(e.zid));
 const SECCIONES = ["Datos","Zonas y equipos","Lectura de la mañana","Lectura de la tarde","Resultado y firma"];
 const META = 0.95;
 const fueraDe = (v, e) => v!=="" && v!=null && (Number(v) < TIPOS[e.tipo].mn || Number(v) > TIPOS[e.tipo].mx);
@@ -332,18 +338,22 @@ function eqHTML(t, e, n){
       <span class="pill" id="re-${k}">Sin lectura</span></div>
     <div class="eq-read">
       <div class="grid2 tight">
-        <label class="f">Temperatura (°C) <span class="req">*</span><input type="number" step="0.1" min="-40" max="30" name="${k}" id="${k}" placeholder="${e.tipo==='C'?'Ej. -19':'Ej. 3'}"></label>
-        <div><div class="fieldset-label">&nbsp;</div><div class="seg"><label><input type="checkbox" name="x${k}" id="x${k}" value="Sin uso"><span>Equipo sin uso hoy</span></label></div></div>
+        <label class="f">Estado del equipo<select name="x${k}" id="x${k}">${ESTADOS.map(o=>`<option>${o}</option>`).join("")}</select></label>
+        <label class="f" data-temp="${k}">Temperatura (°C)<input type="number" step="0.1" min="-40" max="30" name="${k}" id="${k}" placeholder="${e.tipo==='C'?'Ej. -19':'Ej. 3'}"></label>
       </div>
-      <div data-foto="${k}">${PHOTO_REQ("f"+k, "Foto del termómetro (obligatoria)")}<div class="thumbs" id="ph-f${k}"></div></div>
+      <div class="fix" style="padding-left:0" data-nov="${k}" hidden><label for="n${k}">Novedad del equipo</label>
+        <input type="text" id="n${k}" name="n${k}" placeholder="Ej. técnico revisando el compresor; producto trasladado a la Nevera 2"></label></div>
+      <div data-foto="${k}">${PHOTO_REQ("f"+k, "Foto del termómetro (obligatoria si registras temperatura)")}<div class="thumbs" id="ph-f${k}"></div></div>
       <div class="fix" style="padding-left:0" data-fuera="${k}" hidden><label for="a${k}">Fuera de rango: ¿qué acción se tomó?</label>
         <input type="text" id="a${k}" name="a${k}" placeholder="Ej. se ajustó el termostato y se trasladó el producto"></div>
     </div></div>`;
 }
 function zonasHTML(t){
   if (!equipos().length) return `<div class="notice">Primero crea las zonas y sus equipos en la sección «Zonas y equipos».</div>`;
+  const zs = cfg.zonas.filter(z=>z.equipos.length && zonaSel(z.id));
+  if (!zs.length) return `<div class="notice">Selecciona en «Datos» las zonas a tu cargo.</div>`;
   let n = 0;
-  return cfg.zonas.filter(z=>z.equipos.length).map(z=>`<div class="group-title">${esc(z.nombre||"Zona sin nombre")}</div>` +
+  return zs.map(z=>`<div class="group-title">${esc(z.nombre||"Zona sin nombre")}</div>` +
     z.equipos.map(e=>eqHTML(t, {...e, zona:z.nombre}, ++n)).join("")).join("");
 }
 /* Editor de zonas y equipos (sección 2) */
@@ -364,18 +374,24 @@ function cfgHTML(){
     <div class="rp"><button type="button" class="btn small ghost" data-add-eq="${z.id}|R">+ Nevera</button><button type="button" class="btn small ghost" data-add-eq="${z.id}|C">+ Congelador</button></div>
   </div>`).join("");
 }
+function zselHTML(){
+  if (!cfg.zonas.length) return `<p class="hint" style="margin:0">Aún no hay zonas creadas.</p>`;
+  return `<div class="seg">${cfg.zonas.map(z=>`<label><input type="checkbox" name="zsel-${z.id}" value="1" checked><span>${esc(z.nombre||"Zona sin nombre")} (${z.equipos.length})</span></label>`).join("")}</div>`;
+}
 function renderDynamic(){
   const vals = {};
-  $$("#lect-m input, #lect-t input").forEach(el=>{ if (el.dataset.dyn || !el.name) return; if (el.type==="checkbox"){ if (el.checked) vals[el.name]=true; } else if (el.type!=="file") vals[el.name]=el.value; });
+  $$("#zsel input").forEach(el=>{ vals[el.name] = el.checked; });
+  $$("#lect-m input, #lect-t input, #lect-m select, #lect-t select").forEach(el=>{ if (el.dataset.dyn || !el.name) return; if (el.type==="checkbox"){ if (el.checked) vals[el.name]=true; } else if (el.type!=="file") vals[el.name]=el.value; });
+  const zb=$("#zsel"); if (zb){ zb.innerHTML = zselHTML(); Object.entries(vals).forEach(([k,v])=>{ const el=zb.querySelector(`[name="${k}"]`); if (el) el.checked=v; }); }
   ["m","t"].forEach(t=>{ const box=$("#lect-"+t); if (box) box.innerHTML = zonasHTML(t); });
   if (!renderDynamic.keepCfg){ const c=$("#cfg"); if (c) c.innerHTML = cfgHTML(); }
-  Object.entries(vals).forEach(([k,v])=>{ const el=$(`#form [name="${k}"]`); if (!el) return; if (el.type==="checkbox") el.checked=!!v; else el.value=v; });
+  Object.entries(vals).forEach(([k,v])=>{ const el=$(`#form [name="${k}"]`); if (!el) return; if (el.closest("#zsel")) return; if (el.type==="checkbox") el.checked=!!v; else el.value=v; });
   renderPhotos();
 }
 function cfgPanel(){
   return `<div class="panel" data-step="1" hidden>
     <h2>2. Zonas y equipos</h2>
-    <p class="hint">Revisa que estén todas las zonas y equipos. Puedes agregar zonas, neveras o congeladores y cambiarles el nombre. Se numeran solos (Nevera 1, Congelador 1…) y puedes cambiarles el nombre. Esta lista queda guardada en este celular para los próximos días; solo se ajusta cuando cambian los equipos.</p>
+    <p class="hint">Escribe el nombre de cada zona y agrega los equipos que tenga (por ejemplo, hasta 10 neveras o congeladores por zona, o los que necesites). Revisa que estén todas las zonas y equipos. Puedes agregar zonas, neveras o congeladores y cambiarles el nombre. Se numeran solos (Nevera 1, Congelador 1…) y puedes cambiarles el nombre. Esta lista queda guardada en este celular para los próximos días; solo se ajusta cuando cambian los equipos.</p>
     <div class="needs" id="cfg"></div>
     <button type="button" class="btn" id="add-zona">+ Agregar zona</button>
     <button type="button" class="btn ghost" id="reset-cfg">Volver a la lista inicial de la empresa</button>
@@ -397,13 +413,16 @@ function buildForm(){
       <label class="f">Fecha <span class="req">*</span><input type="date" id="fecha" name="fecha"></label>
       ${respHTML()}
     </div>
+    <div class="fieldset-label">Zonas a tu cargo <span class="req">*</span></div>
+    <p class="hint" style="margin:.2rem 0 .5rem">Marca solo las zonas que te corresponden. Cada líder registra su área; los equipos que no diligencies quedan «sin registro» y no impiden generar el PDF.</p>
+    <div id="zsel"></div>
     <div class="notice" id="aviso-dia" hidden></div>
-    <p class="hint" style="margin:0">Dos lecturas al día: en la mañana, antes del servicio, y en la tarde, después del servicio. En cada equipo escribe la temperatura y <b>toma la foto del termómetro con la cámara en ese momento</b>: la foto queda con la fecha y la hora grabadas, y esa es la hora de la lectura. No sirven fotos de la galería ni de otro momento.</p>
-    <p class="hint" style="margin:0">Lo que llevas se guarda en este celular, con las fotos. Puedes hacer la lectura de la mañana, cerrar y volver en la tarde. Genera el PDF al terminar la lectura de la tarde.</p>
+    <p class="hint" style="margin:0">Dos lecturas al día: en la mañana, antes del servicio, y en la tarde, después del servicio. En cada equipo indica el estado. Si está operativo, escribe la temperatura y <b>toma la foto del termómetro con la cámara en ese momento</b>: la foto queda con la fecha y la hora grabadas, y esa es la hora de la lectura. No sirven fotos de la galería ni de otro momento. Si el equipo está en mantenimiento, en reparación o fuera de servicio, selecciónalo y describe la novedad: no requiere temperatura ni foto.</p>
+    <p class="hint" style="margin:0">Lo que llevas se guarda en este celular, con las fotos. Puedes hacer la lectura de la mañana, cerrar y volver en la tarde. Genera el PDF al terminar tus lecturas.</p>
   </div>
   ${cfgPanel()}
-  ${lecturaPanel(2, "m", "Lectura de la mañana", "Antes de abrir el servicio. Si un equipo está fuera de rango, escribe la acción tomada. Si falta un equipo, agrégalo en «Zonas y equipos».")}
-  ${lecturaPanel(3, "t", "Lectura de la tarde", "Después del servicio. Toma de nuevo la foto del termómetro de cada equipo.")}
+  ${lecturaPanel(2, "m", "Lectura de la mañana", "Antes de abrir el servicio. Registra los equipos a tu cargo; los que no apliquen déjalos en blanco. Si un equipo está fuera de rango, escribe la acción tomada.")}
+  ${lecturaPanel(3, "t", "Lectura de la tarde", "Después del servicio. Toma de nuevo la foto del termómetro de cada equipo que registres.")}
   <div class="panel" data-step="4" hidden>
     <h2>5. Resultado del día</h2>
     <div class="result"><span class="lbl">Lecturas conformes</span><span class="pill" id="r-pct">Sin datos</span></div>
@@ -449,59 +468,64 @@ function onDynInput(el){
 function syncForm(){
   const dia = diaSemana(fv("fecha")); const av = $("#aviso-dia");
   if (dia==="Martes"||dia==="Miércoles"){ av.hidden=false; av.textContent=`La fecha cae ${dia.toLowerCase()}, día de descanso del restaurante. Si no hubo operación, no es necesario el registro.`; } else av.hidden=true;
-  ["m","t"].forEach(t=>equipos().forEach(e=>{ const k=`${t}-${e.id}`; const off = val("x"+k)==="Sin uso";
+  ["m","t"].forEach(t=>equipos().forEach(e=>{ const k=`${t}-${e.id}`; const off = !isOp(fv("x"+k));
     const fb=$(`[data-fuera="${k}"]`); if (fb) fb.hidden = off || !fueraDe(fv(k), e);
+    const tp=$(`[data-temp="${k}"]`); if (tp) tp.hidden = off;
+    const nv=$(`[data-nov="${k}"]`); if (nv) nv.hidden = !off;
     const ft=$(`[data-foto="${k}"]`); if (ft) ft.hidden = off; }));
 }
 function lectura(t, e){
-  const k=`${t}-${e.id}`, v=fv(k), off = val("x"+k)==="Sin uso";
+  const k=`${t}-${e.id}`, v=fv(k), est = fv("x"+k) || "Operativo";
   const fotos = photosOf("f"+k).filter(p=>!p.late);
   const hora = fotos.length ? fmtHM(fotos[0].ts) : "";
-  if (off) return {v:"", st:"Sin uso", hora:"", accion:""};
-  if (v==="") return {v, st:"", hora, accion:fv("a"+k)};
+  if (!isOp(est)) return {v:"", st:est, nov:true, hora:"", accion:fv("n"+k)};
+  if (v==="") return {v, st: fotos.length ? "FALTA °C" : "", hora, accion:""};
   const fuera = fueraDe(v, e);
   const st = !fotos.length ? "FALTA FOTO" : fuera ? (fv("a"+k) ? "Fuera-corregido" : "FUERA DE RANGO") : "OK";
   return {v, st, hora, accion:fv("a"+k), fuera};
 }
+const BAD = ["FALTA FOTO","FALTA °C","FUERA DE RANGO"];
 function stepDone(i){
-  if (i===0) return !!(fv("fecha") && fv("responsable"));
+  if (i===0) return !!(fv("fecha") && fv("responsable") && eqsSel().length);
   if (i===1) return equipos().length>0 && cfg.zonas.every(z=>z.nombre);
-  if (i===2||i===3){ const t = i===2?"m":"t"; return equipos().length>0 && equipos().every(e=>{ const s=lectura(t,e).st; return s==="OK"||s==="Fuera-corregido"||s==="Sin uso"; }); }
+  if (i===2||i===3){ const t = i===2?"m":"t"; const ls = eqsSel().map(e=>lectura(t,e));
+    return ls.some(x=>x.st) && !ls.some(x=>BAD.includes(x.st)); }
   if (i===4) return sigHasInk("sig-resp");
   return false;
 }
 function collect(){
   const d = {fecha:fv("fecha"), dia:diaSemana(fv("fecha")), responsable:fv("responsable"), cargo:fv("cargo"), obs:fv("obs")};
-  d.zonas = cfg.zonas.map(z=>z.nombre||"Zona sin nombre");
-  d.equipos = equipos().map(e=>({zona:e.zona, equipo:e.nombre, tipo:e.tipo, rango:TIPOS[e.tipo].txt, m:lectura("m",e), t:lectura("t",e)}));
+  d.zonas = cfg.zonas.filter(z=>zonaSel(z.id)).map(z=>z.nombre||"Zona sin nombre");
+  d.equipos = eqsSel().map(e=>({id:e.id, zona:e.zona, equipo:e.nombre, tipo:e.tipo, rango:TIPOS[e.tipo].txt, m:lectura("m",e), t:lectura("t",e)}));
   return d;
 }
 function compute(d){
   const r = {}; const all = d.equipos.flatMap(e=>[e.m, e.t]);
-  const leidas = all.filter(x=>x.v!=="" && x.st!=="Sin uso");
+  const leidas = all.filter(x=>x.v!=="");
   r.lecturas = leidas.length;
   r.ok = leidas.filter(x=>!x.fuera).length;
   r.fuera = leidas.filter(x=>x.fuera).length;
   r.pend = leidas.filter(x=>x.st==="FUERA DE RANGO").length;
   r.sinFoto = leidas.filter(x=>x.st==="FALTA FOTO").length;
-  r.faltan = all.filter(x=>x.v==="" && x.st!=="Sin uso").length;
+  r.sinTemp = all.filter(x=>x.st==="FALTA °C").length;
+  r.sinReg = all.filter(x=>!x.st).length;
+  r.novedades = d.equipos.filter(e=>e.m.nov||e.t.nov).map(e=>`${e.equipo}: ${(e.m.nov?e.m:e.t).st}`);
   r.pct = r.lecturas ? r.ok/r.lecturas : null;
   r.porT = {};
-  ["m","t"].forEach(t=>{ const l=d.equipos.map(e=>e[t]).filter(x=>x.v!=="" && x.st!=="Sin uso"); r.porT[t] = l.length ? l.filter(x=>!x.fuera).length/l.length : null; });
+  ["m","t"].forEach(t=>{ const l=d.equipos.map(e=>e[t]).filter(x=>x.v!==""); r.porT[t] = l.length ? l.filter(x=>!x.fuera).length/l.length : null; });
   r.eqFuera = d.equipos.filter(e=>[e.m,e.t].some(x=>x.fuera)).map(e=>e.equipo);
-  r.concepto = !r.lecturas ? "" : r.sinFoto ? `INCOMPLETO: ${pl(r.sinFoto,"lectura","lecturas")} sin foto del termómetro`
+  r.concepto = !r.lecturas ? (r.novedades.length ? "SIN LECTURAS: solo novedades de equipos" : "") : r.sinTemp ? `INCOMPLETO: ${pl(r.sinTemp,"foto","fotos")} sin temperatura` : r.sinFoto ? `INCOMPLETO: ${pl(r.sinFoto,"lectura","lecturas")} sin foto del termómetro`
     : r.pend ? `ACCIÓN PENDIENTE: ${pl(r.pend,"lectura","lecturas")} fuera de rango sin acción`
-    : r.faltan ? `INCOMPLETO: ${pl(r.faltan,"lectura","lecturas")} por registrar`
     : r.pct>=META ? "CONFORME" : "NO CONFORME: abrir acción en F-ME-12";
   return r;
 }
 const pctCls = v => v==null ? "" : v>=META ? "ok" : v>=0.8 ? "mid" : "bad";
-const conCls = c => !c ? "" : c==="CONFORME" ? "ok" : c.startsWith("INCOMPLETO") ? "mid" : "bad";
-const stCls = s => s==="OK" ? "ok" : (s==="FUERA DE RANGO"||s==="FALTA FOTO") ? "bad" : s==="Fuera-corregido" ? "mid" : "";
+const conCls = c => !c ? "" : c==="CONFORME" ? "ok" : (c.startsWith("INCOMPLETO")||c.startsWith("SIN LECT")) ? "mid" : "bad";
+const stCls = s => s==="OK" ? "ok" : BAD.includes(s) ? "bad" : (s==="Fuera-corregido"||(s&&!isOp(s))) ? "mid" : "";
 function renderResults(r){
   const d = collect();
-  equipos().forEach((e,i)=>["m","t"].forEach(t=>{ const x=d.equipos[i][t];
-    setPill(`re-${t}-${e.id}`, x.st==="Sin uso" ? "Sin uso" : x.v==="" ? (x.hora?`Foto ${x.hora} · falta °C`:"Sin lectura") : `${x.v} °C${x.hora?" · "+x.hora:""} · ${x.st}`, stCls(x.st)); }));
+  d.equipos.forEach(e=>["m","t"].forEach(t=>{ const x=e[t];
+    setPill(`re-${t}-${e.id}`, x.nov ? x.st : x.v==="" ? (x.hora?`Foto ${x.hora} · falta °C`:"Sin registro") : `${x.v} °C${x.hora?" · "+x.hora:""} · ${x.st}`, stCls(x.st)); }));
   ["m","t"].forEach(t=>setPill("r-"+t, pct(r.porT[t]), pctCls(r.porT[t])));
   setPill("r-pct", r.lecturas ? `${pct(r.pct)} (${r.ok} de ${r.lecturas})` : "Sin datos", pctCls(r.pct));
   setPill("r-fuera", r.lecturas ? (r.fuera ? `${r.fuera}: ${r.eqFuera.join(", ")}` : "Ninguna") : "Sin datos", r.fuera ? "bad" : r.lecturas ? "ok" : "");
@@ -512,7 +536,8 @@ function summaryChips(r){
   return `<span class="pill ${pctCls(r.pct)}">Conformidad ${pct(r.pct)}</span>
   <span class="pill ${r.fuera?'bad':'ok'}">Fuera de rango ${r.fuera}</span>
   ${r.sinFoto?`<span class="pill bad">Sin foto ${r.sinFoto}</span>`:""}
-  ${r.faltan?`<span class="pill mid">Faltan ${r.faltan} lecturas</span>`:""}
+  ${r.novedades.length?`<span class="pill mid">Equipos con novedad ${r.novedades.length}</span>`:""}
+  ${r.sinReg?`<span class="pill">Sin registro ${r.sinReg}</span>`:""}
   <span class="pill ${conCls(r.concepto)}">${esc(r.concepto||"Sin concepto")}</span>`;
 }
 function validate(d, r){
@@ -520,8 +545,10 @@ function validate(d, r){
   if (!d.fecha) f.push("fecha"); if (!d.responsable) f.push("responsable");
   if (f.length){ go(0); return f; }
   if (!equipos().length){ go(1); return ["crear al menos una zona con sus equipos"]; }
+  if (!eqsSel().length){ go(0); return ["marcar las zonas a tu cargo"]; }
   const enM = s => d.equipos.some(e=>s(e.m));
-  if (r.faltan){ f.push(`${pl(r.faltan,"lectura","lecturas")} (o marcar el equipo sin uso)`); go(enM(x=>x.v==="" && x.st!=="Sin uso")?2:3); }
+  if (!r.lecturas && !r.novedades.length){ go(2); return ["al menos una lectura o una novedad de equipo"]; }
+  if (r.sinTemp){ f.push(`la temperatura de ${pl(r.sinTemp,"foto tomada","fotos tomadas")}`); go(enM(x=>x.st==="FALTA °C")?2:3); }
   if (r.sinFoto){ f.push(`la foto del termómetro en ${pl(r.sinFoto,"lectura","lecturas")}`); go(enM(x=>x.st==="FALTA FOTO")?2:3); }
   if (r.pend){ f.push(`la acción de ${pl(r.pend,"lectura","lecturas")} fuera de rango`); go(enM(x=>x.st==="FUERA DE RANGO")?2:3); }
   return f;
@@ -533,26 +560,38 @@ async function pdfBody(P, d, r){
   P.sec("1. DATOS DEL DÍA");
   P.table({body:[
     [{content:"N.° de registro",styles:P.L}, pdfTxt(d.registro), {content:"Fecha",styles:P.L}, `${fmtDate(d.fecha)} (${pdfTxt(d.dia)})`],
-    [{content:"Responsable",styles:P.L}, {content:`${pdfTxt(d.responsable)} (${pdfTxt(d.cargo)})`, colSpan:3}]
+    [{content:"Responsable",styles:P.L}, {content:`${pdfTxt(d.responsable)} (${pdfTxt(d.cargo)})`, colSpan:3}],
+    [{content:"Zonas a cargo",styles:P.L}, {content:pdfTxt(d.zonas.join(", ")), colSpan:3}]
   ]});
   P.sec("2. LECTURAS POR EQUIPO (la hora es la de la foto del termómetro)");
-  const st = x => x.st ? x.st : "-";
+  const st = x => x.st ? x.st : "Sin registro";
   const body = [];
   [...new Set(d.zonas)].forEach(z=>{ const eqs = d.equipos.filter(e=>e.zona===z); if (!eqs.length) return;
     body.push([{content:z.toUpperCase(), colSpan:9, styles:{fillColor:P.SECF, fontStyle:"bold"}}]);
     eqs.forEach(e=>body.push([pdfTxt(e.equipo), pdfTxt(e.rango),
       e.m.v||"-", e.m.hora||"-", st(e.m), e.t.v||"-", e.t.hora||"-", st(e.t),
-      pdfTxt([e.m.accion&&e.m.fuera&&`M: ${e.m.accion}`, e.t.accion&&e.t.fuera&&`T: ${e.t.accion}`].filter(Boolean).join(" | "))])); });
-  P.table({head:[["Equipo","Rango","Mañana °C","Hora","Estado","Tarde °C","Hora","Estado","Acción tomada"]], body,
+      pdfTxt([e.m.accion&&(e.m.fuera||e.m.nov)&&`M: ${e.m.accion}`, e.t.accion&&(e.t.fuera||e.t.nov)&&`T: ${e.t.accion}`].filter(Boolean).join(" | "))])); });
+  P.table({head:[["Equipo","Rango","Mañana °C","Hora","Estado","Tarde °C","Hora","Estado","Acción / novedad"]], body,
     styles:{...P.base.styles, fontSize:7.5},
     columnStyles:{1:{cellWidth:20,halign:"center"},2:{cellWidth:14,halign:"center",fontStyle:"bold"},3:{cellWidth:11,halign:"center"},4:{cellWidth:24,halign:"center"},5:{cellWidth:14,halign:"center",fontStyle:"bold"},6:{cellWidth:11,halign:"center"},7:{cellWidth:24,halign:"center"},8:{cellWidth:38}},
-    didParseCell:h=>{ if(h.section==="body" && (h.column.index===4||h.column.index===7)){ const c=P.color(h.cell.raw); if(c) h.cell.styles.fillColor=c; } }});
+    didParseCell:h=>{ if(h.section==="body" && (h.column.index===4||h.column.index===7)){ const raw=String(h.cell.raw); const c = ESTADOS.slice(1).includes(raw) ? [251,240,220] : P.color(raw); if(c) h.cell.styles.fillColor=c; } }});
   P.sec("3. RESULTADO DEL DÍA");
   P.table({head:[["Lecturas","Conformes","Fuera de rango","% conformidad","Equipos con novedad"]],
     body:[[String(r.lecturas), String(r.ok), String(r.fuera), pct(r.pct), pdfTxt(r.eqFuera.join(", ")||"Ninguno")]], bodyStyles:{halign:"center", fontStyle:"bold"}});
+  P.table({body:[[{content:"Equipos en mantenimiento, reparación o fuera de servicio",styles:P.L}, pdfTxt(r.novedades.join("; ")||"Ninguno")],
+    [{content:"Lecturas sin registro (no a cargo o no aplicaban)",styles:P.L}, String(r.sinReg)]]});
   P.table({body:[[{content:"Concepto",styles:P.L}, {content:pdfTxt(r.concepto||"-"), styles:{fontStyle:"bold", fillColor:P.color(r.concepto)||[255,255,255]}}],
     [{content:"Observaciones",styles:P.L}, pdfTxt(d.obs||"-")]]});
 }
+
+/* Al cambiar las zonas a cargo, se muestran solo sus equipos */
+document.addEventListener("change", e=>{
+  const t=e.target; if (!t.closest) return;
+  if (t.closest("#zsel")) renderDynamic();
+  /* El estado de la mañana pasa a la tarde si la tarde aún no se ha diligenciado */
+  if (t.id && t.id.startsWith("xm-")){ const id=t.id.slice(3), xt=$("#xt-"+id), tt=$("#t-"+id);
+    if (xt && tt && !tt.value && !photosOf("ft-"+id).length) xt.value = t.value; }
+});
 
 </script>
 <script>
