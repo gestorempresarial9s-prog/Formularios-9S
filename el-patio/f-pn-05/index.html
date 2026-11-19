@@ -300,32 +300,24 @@ const CTRL = {codigo:"F-PN-05", version:"02", emision:"18/11/2026", proceso:"Pro
   archivo:"04 Produccion y saneamiento / 8. Registros / F-PN-05 Registro de temperaturas / 2026"};
 /* Rangos aceptables por tipo de equipo (°C) */
 const TIPOS = {R:{label:"Refrigeración", mn:0, mx:4, txt:"0 a 4 °C"}, C:{label:"Congelación", mn:-30, mx:-18, txt:"-18 °C o menos"}};
-/* Equipos oficiales por zona. Los que se agreguen desde el formulario quedan guardados en este celular. */
-const ZONAS_EQ = ["Cocina","Bodega","Bar"];
-const EQUIPOS_BASE = [
-  {id:"e1", zona:"Cocina", nombre:"Nevera cocina 1", tipo:"R"},
-  {id:"e2", zona:"Cocina", nombre:"Nevera cocina 2", tipo:"R"},
-  {id:"e3", zona:"Cocina", nombre:"Nevera ensaladas", tipo:"R"},
-  {id:"e8", zona:"Cocina", nombre:"Cámara de carnes", tipo:"R"},
-  {id:"e6", zona:"Cocina", nombre:"Congelador cocina", tipo:"C"},
-  {id:"e5", zona:"Bodega", nombre:"Nevera bodega", tipo:"R"},
-  {id:"e7", zona:"Bodega", nombre:"Congelador bodega", tipo:"C"},
-  {id:"e4", zona:"Bar", nombre:"Nevera bebidas", tipo:"R"}
-];
-const EXTRA_KEY = "elpatio-f-pn-05-equipos-extra";
-let extras = [];
-try{ extras = JSON.parse(localStorage.getItem(EXTRA_KEY)||"[]"); }catch(e){ extras = []; }
-const saveExtras = () => { try{ localStorage.setItem(EXTRA_KEY, JSON.stringify(extras)); }catch(e){} };
-const equipos = () => ZONAS_EQ.flatMap(z => [...EQUIPOS_BASE, ...extras].filter(e=>e.zona===z));
+/* Zonas y equipos: los define cada empresa desde el formulario y quedan guardados en el celular. */
+const CFG_KEY = "f-pn-05-zonas-equipos";
+let cfg = {zonas:[]};
+try{ const c = JSON.parse(localStorage.getItem(CFG_KEY)||"null"); if (c && Array.isArray(c.zonas)) cfg = c; }catch(e){}
+const saveCfg = () => { try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){} };
+const uid = () => Math.random().toString(36).slice(2,8);
+const equipos = () => cfg.zonas.flatMap(z => z.equipos.map(e=>({...e, zona:z.nombre||"Zona sin nombre", zid:z.id})));
+const TIPO_NOM = {R:"Nevera", C:"Congelador"};
+function nextName(tipo){ const base = TIPO_NOM[tipo]; const nums = equipos().map(e=>{ const m = e.nombre.match(new RegExp("^"+base+"\\s+(\\d+)$","i")); return m ? +m[1] : 0; }); return `${base} ${Math.max(0,...nums)+1}`; }
 const LECT = {m:"mañana", t:"tarde"};
-const SECCIONES = ["Datos","Lectura de la mañana","Lectura de la tarde","Resultado y firma"];
+const SECCIONES = ["Datos","Zonas y equipos","Lectura de la mañana","Lectura de la tarde","Resultado y firma"];
 const META = 0.95;
 const fueraDe = (v, e) => v!=="" && v!=null && (Number(v) < TIPOS[e.tipo].mn || Number(v) > TIPOS[e.tipo].mx);
 
 function eqHTML(t, e, n){
-  const k = `${t}-${e.id}`, extra = !EQUIPOS_BASE.some(b=>b.id===e.id);
+  const k = `${t}-${e.id}`;
   return `<div class="item">
-    <div class="eq-top"><div class="q" style="flex:1"><span class="num">${n}</span><p><b>${esc(e.nombre)}</b>${extra?' <span class="eq-rng">(agregado)</span>':''}<br><span class="eq-rng">${TIPOS[e.tipo].label} · rango ${TIPOS[e.tipo].txt}</span></p></div>
+    <div class="eq-top"><div class="q" style="flex:1"><span class="num">${n}</span><p><b>${esc(e.nombre)}</b><br><span class="eq-rng">${TIPOS[e.tipo].label} · rango ${TIPOS[e.tipo].txt}</span></p></div>
       <span class="pill" id="re-${k}">Sin lectura</span></div>
     <div class="eq-read">
       <div class="grid2 tight">
@@ -335,30 +327,47 @@ function eqHTML(t, e, n){
       <div data-foto="${k}">${PHOTO_REQ("f"+k, "Foto del termómetro (obligatoria)")}<div class="thumbs" id="ph-f${k}"></div></div>
       <div class="fix" style="padding-left:0" data-fuera="${k}" hidden><label for="a${k}">Fuera de rango: ¿qué acción se tomó?</label>
         <input type="text" id="a${k}" name="a${k}" placeholder="Ej. se ajustó el termostato y se trasladó el producto"></div>
-      ${extra && t==="m" ? `<div class="rp"><span></span><button type="button" class="btn small ghost danger" data-rm-eq="${e.id}">Quitar este equipo</button></div>` : ""}
     </div></div>`;
 }
 function zonasHTML(t){
+  if (!equipos().length) return `<div class="notice">Primero crea las zonas y sus equipos en la sección «Zonas y equipos».</div>`;
   let n = 0;
-  return ZONAS_EQ.map(z=>{
-    const eqs = equipos().filter(e=>e.zona===z);
-    return `<div class="group-title">${esc(z)}</div>` + eqs.map(e=>eqHTML(t, e, ++n)).join("") +
-      `<div class="eq-add" data-add-box="${t}-${z}" hidden>
-         <label class="f">Nombre del equipo<input type="text" data-dyn="1" id="nn-${t}-${z}" placeholder="Ej. Nevera de postres"></label>
-         <div><div class="fieldset-label">Tipo</div><div class="seg">
-           <label><input type="radio" data-dyn="1" name="nt-${t}-${z}" value="R" checked><span>Nevera (0 a 4 °C)</span></label>
-           <label><input type="radio" data-dyn="1" name="nt-${t}-${z}" value="C"><span>Congelador (-18 °C o menos)</span></label></div></div>
-         <div class="rp"><button type="button" class="btn small ghost" data-add-cancel="${t}-${z}">Cancelar</button><button type="button" class="btn small primary" data-add-save="${t}|${z}">Guardar equipo</button></div>
-       </div>
-       <button type="button" class="btn small ghost" data-add-open="${t}-${z}">+ Agregar nevera o congelador en ${esc(z)}</button>`;
-  }).join("");
+  return cfg.zonas.filter(z=>z.equipos.length).map(z=>`<div class="group-title">${esc(z.nombre||"Zona sin nombre")}</div>` +
+    z.equipos.map(e=>eqHTML(t, {...e, zona:z.nombre}, ++n)).join("")).join("");
+}
+/* Editor de zonas y equipos (sección 2) */
+function cfgHTML(){
+  if (!cfg.zonas.length) return `<p class="hint" style="margin:0">Aún no hay zonas. Agrega la primera, por ejemplo «Zona de cocina» o «Bodega».</p>`;
+  return cfg.zonas.map((z,zi)=>`<div class="need">
+    <div class="need-head">Zona ${zi+1}<button type="button" class="btn small ghost danger" data-rm-zona="${z.id}">Quitar zona</button></div>
+    <label class="f">Nombre de la zona <span class="req">*</span><input type="text" data-dyn="1" data-cfg="zona" data-z="${z.id}" value="${esc(z.nombre)}" placeholder="Ej. Zona de cocina"></label>
+    ${z.equipos.map(e=>`<div class="eq-add">
+      <div class="grid2 tight">
+        <label class="f">Equipo<input type="text" data-dyn="1" data-cfg="eq" data-z="${z.id}" data-e="${e.id}" value="${esc(e.nombre)}"></label>
+        <div><div class="fieldset-label">Tipo</div><div class="seg">
+          <label><input type="radio" data-dyn="1" data-cfg="tipo" data-z="${z.id}" data-e="${e.id}" name="tp-${e.id}" value="R" ${e.tipo==="R"?"checked":""}><span>Nevera</span></label>
+          <label><input type="radio" data-dyn="1" data-cfg="tipo" data-z="${z.id}" data-e="${e.id}" name="tp-${e.id}" value="C" ${e.tipo==="C"?"checked":""}><span>Congelador</span></label></div></div>
+      </div>
+      <div class="rp"><span class="eq-rng">Rango: ${TIPOS[e.tipo].txt}</span><button type="button" class="btn small ghost danger" data-rm-eq="${e.id}">Quitar equipo</button></div>
+    </div>`).join("")}
+    <div class="rp"><button type="button" class="btn small ghost" data-add-eq="${z.id}|R">+ Nevera</button><button type="button" class="btn small ghost" data-add-eq="${z.id}|C">+ Congelador</button></div>
+  </div>`).join("");
 }
 function renderDynamic(){
   const vals = {};
   $$("#lect-m input, #lect-t input").forEach(el=>{ if (el.dataset.dyn || !el.name) return; if (el.type==="checkbox"){ if (el.checked) vals[el.name]=true; } else if (el.type!=="file") vals[el.name]=el.value; });
   ["m","t"].forEach(t=>{ const box=$("#lect-"+t); if (box) box.innerHTML = zonasHTML(t); });
+  if (!renderDynamic.keepCfg){ const c=$("#cfg"); if (c) c.innerHTML = cfgHTML(); }
   Object.entries(vals).forEach(([k,v])=>{ const el=$(`#form [name="${k}"]`); if (!el) return; if (el.type==="checkbox") el.checked=!!v; else el.value=v; });
   renderPhotos();
+}
+function cfgPanel(){
+  return `<div class="panel" data-step="1" hidden>
+    <h2>2. Zonas y equipos</h2>
+    <p class="hint">Crea las zonas con el nombre que usa la empresa y agrega en cada una sus neveras y congeladores. Se numeran solos (Nevera 1, Congelador 1…) y puedes cambiarles el nombre. Esta lista queda guardada en este celular para los próximos días; solo se ajusta cuando cambian los equipos.</p>
+    <div class="needs" id="cfg"></div>
+    <button type="button" class="btn" id="add-zona">+ Agregar zona</button>
+  </div>`;
 }
 function lecturaPanel(step, t, titulo, hint){
   return `<div class="panel" data-step="${step}" hidden>
@@ -384,10 +393,11 @@ function buildForm(){
     <p class="hint" style="margin:0">Dos lecturas al día: en la mañana, antes del servicio, y en la tarde, después del servicio. En cada equipo escribe la temperatura y <b>toma la foto del termómetro con la cámara en ese momento</b>: la foto queda con la fecha y la hora grabadas, y esa es la hora de la lectura. No sirven fotos de la galería ni de otro momento.</p>
     <p class="hint" style="margin:0">Lo que llevas se guarda en este celular, con las fotos. Puedes hacer la lectura de la mañana, cerrar y volver en la tarde. Genera el PDF al terminar la lectura de la tarde.</p>
   </div>
-  ${lecturaPanel(1, "m", "Lectura de la mañana", "Antes de abrir el servicio. Si un equipo está fuera de rango, escribe la acción tomada. Si hay una nevera o un congelador que no está en la lista, agrégalo en su zona: queda guardado en este celular para los próximos días.")}
-  ${lecturaPanel(2, "t", "Lectura de la tarde", "Después del servicio. Toma de nuevo la foto del termómetro de cada equipo.")}
-  <div class="panel" data-step="3" hidden>
-    <h2>4. Resultado del día</h2>
+  ${cfgPanel()}
+  ${lecturaPanel(2, "m", "Lectura de la mañana", "Antes de abrir el servicio. Si un equipo está fuera de rango, escribe la acción tomada. Si falta un equipo, agrégalo en «Zonas y equipos».")}
+  ${lecturaPanel(3, "t", "Lectura de la tarde", "Después del servicio. Toma de nuevo la foto del termómetro de cada equipo.")}
+  <div class="panel" data-step="4" hidden>
+    <h2>5. Resultado del día</h2>
     <div class="result"><span class="lbl">Lecturas conformes</span><span class="pill" id="r-pct">Sin datos</span></div>
     <div class="result"><span class="lbl">Lecturas fuera de rango</span><span class="pill" id="r-fuera">Sin datos</span></div>
     <div class="result"><span class="lbl">Evidencia fotográfica</span><span class="pill" id="r-fotos">Sin datos</span></div>
@@ -400,24 +410,30 @@ function buildForm(){
   renderDynamic();
 }
 function initValues(){ if (!$("#fecha").value) $("#fecha").value = todayISO(); }
+function findZ(id){ return cfg.zonas.find(z=>z.id===id); }
+function armed(b, txt){ if (b.dataset.armed) return true; const o=b.textContent; b.dataset.armed="1"; b.textContent=txt; setTimeout(()=>{ if(b.isConnected){ delete b.dataset.armed; b.textContent=o; } }, 4000); return false; }
 function onFormClick(b){
   const d = b.dataset;
-  if (d.addOpen){ $(`[data-add-box="${d.addOpen}"]`).hidden=false; b.hidden=true; $(`#nn-${d.addOpen}`)?.focus(); return true; }
-  if (d.addCancel){ $(`[data-add-box="${d.addCancel}"]`).hidden=true; $(`[data-add-open="${d.addCancel}"]`).hidden=false; return true; }
-  if (d.addSave){
-    const [t, z] = d.addSave.split("|"); const nombre = ($(`#nn-${t}-${z}`).value||"").trim();
-    if (!nombre){ toast("Escribe el nombre del equipo."); return true; }
-    if (equipos().some(e=>e.nombre.toLowerCase()===nombre.toLowerCase())){ toast("Ya hay un equipo con ese nombre."); return true; }
-    const tipo = val(`nt-${t}-${z}`) || "R";
-    extras.push({id:"x"+Date.now().toString(36), zona:z, nombre, tipo}); saveExtras(); renderDynamic();
-    toast(`${nombre} agregado en ${z}. Queda guardado en este celular.`); return true;
-  }
-  if (d.rmEq){
-    if (!b.dataset.armed){ b.dataset.armed="1"; b.textContent="Toca otra vez para quitarlo"; setTimeout(()=>{ if(b.isConnected){ delete b.dataset.armed; b.textContent="Quitar este equipo"; } }, 4000); return true; }
-    extras = extras.filter(e=>e.id!==d.rmEq); saveExtras();
-    photos = photos.filter(p=>!p.item.endsWith("-"+d.rmEq)); renderDynamic(); return true;
-  }
+  if (b.id==="add-zona"){ cfg.zonas.push({id:uid(), nombre:"", equipos:[]}); saveCfg(); renderDynamic(); const ins=$$('#cfg [data-cfg="zona"]'); ins[ins.length-1]?.focus(); return true; }
+  if (d.addEq){ const [zid, tipo] = d.addEq.split("|"); const z=findZ(zid); if (!z) return true;
+    z.equipos.push({id:uid(), nombre:nextName(tipo), tipo}); saveCfg(); renderDynamic(); return true; }
+  if (d.rmEq){ if (!armed(b, "Toca otra vez para quitar")) return true;
+    cfg.zonas.forEach(z=>z.equipos = z.equipos.filter(e=>e.id!==d.rmEq)); saveCfg();
+    photos = photos.filter(p=>!p.item.endsWith("-"+d.rmEq)); renderDynamic(); return true; }
+  if (d.rmZona){ const z=findZ(d.rmZona); if (!z) return true;
+    if (z.equipos.length && !armed(b, `Quita la zona y sus ${z.equipos.length} equipos`)) return true;
+    const ids = z.equipos.map(e=>e.id); cfg.zonas = cfg.zonas.filter(x=>x.id!==z.id); saveCfg();
+    photos = photos.filter(p=>!ids.some(id=>p.item.endsWith("-"+id))); renderDynamic(); return true; }
   return false;
+}
+/* Cambios en el editor: se guardan al escribir; las lecturas se actualizan sin perder el foco */
+function onDynInput(el){
+  const z = findZ(el.dataset.z); if (!z) return;
+  if (el.dataset.cfg==="zona") z.nombre = el.value.trim();
+  else { const e = z.equipos.find(x=>x.id===el.dataset.e); if (!e) return;
+    if (el.dataset.cfg==="eq") e.nombre = el.value.trim() || e.nombre;
+    if (el.dataset.cfg==="tipo" && el.checked) e.tipo = el.value; }
+  saveCfg(); renderDynamic.keepCfg = el.dataset.cfg!=="tipo"; renderDynamic(); renderDynamic.keepCfg = false;
 }
 function syncForm(){
   const dia = diaSemana(fv("fecha")); const av = $("#aviso-dia");
@@ -438,12 +454,14 @@ function lectura(t, e){
 }
 function stepDone(i){
   if (i===0) return !!(fv("fecha") && fv("responsable"));
-  if (i===1||i===2){ const t = i===1?"m":"t"; return equipos().every(e=>{ const s=lectura(t,e).st; return s==="OK"||s==="Fuera-corregido"||s==="Sin uso"; }); }
-  if (i===3) return sigHasInk("sig-resp");
+  if (i===1) return equipos().length>0 && cfg.zonas.every(z=>z.nombre);
+  if (i===2||i===3){ const t = i===2?"m":"t"; return equipos().length>0 && equipos().every(e=>{ const s=lectura(t,e).st; return s==="OK"||s==="Fuera-corregido"||s==="Sin uso"; }); }
+  if (i===4) return sigHasInk("sig-resp");
   return false;
 }
 function collect(){
   const d = {fecha:fv("fecha"), dia:diaSemana(fv("fecha")), responsable:fv("responsable"), cargo:fv("cargo"), obs:fv("obs")};
+  d.zonas = cfg.zonas.map(z=>z.nombre||"Zona sin nombre");
   d.equipos = equipos().map(e=>({zona:e.zona, equipo:e.nombre, tipo:e.tipo, rango:TIPOS[e.tipo].txt, m:lectura("m",e), t:lectura("t",e)}));
   return d;
 }
@@ -490,15 +508,16 @@ function validate(d, r){
   const f = [];
   if (!d.fecha) f.push("fecha"); if (!d.responsable) f.push("responsable");
   if (f.length){ go(0); return f; }
+  if (!equipos().length){ go(1); return ["crear al menos una zona con sus equipos"]; }
   const enM = s => d.equipos.some(e=>s(e.m));
-  if (r.faltan){ f.push(`${pl(r.faltan,"lectura","lecturas")} (o marcar el equipo sin uso)`); go(enM(x=>x.v==="" && x.st!=="Sin uso")?1:2); }
-  if (r.sinFoto){ f.push(`la foto del termómetro en ${pl(r.sinFoto,"lectura","lecturas")}`); go(enM(x=>x.st==="FALTA FOTO")?1:2); }
-  if (r.pend){ f.push(`la acción de ${pl(r.pend,"lectura","lecturas")} fuera de rango`); go(enM(x=>x.st==="FUERA DE RANGO")?1:2); }
+  if (r.faltan){ f.push(`${pl(r.faltan,"lectura","lecturas")} (o marcar el equipo sin uso)`); go(enM(x=>x.v==="" && x.st!=="Sin uso")?2:3); }
+  if (r.sinFoto){ f.push(`la foto del termómetro en ${pl(r.sinFoto,"lectura","lecturas")}`); go(enM(x=>x.st==="FALTA FOTO")?2:3); }
+  if (r.pend){ f.push(`la acción de ${pl(r.pend,"lectura","lecturas")} fuera de rango`); go(enM(x=>x.st==="FUERA DE RANGO")?2:3); }
   return f;
 }
 const doneLine = d => `${fmtDate(d.fecha)} · ${d.responsable}`;
 const fileTag = d => `Temperaturas ${d.fecha}`;
-const photoCaption = key => { const t=key[1], id=key.slice(3); const e=equipos().find(x=>x.id===id); return `${e?e.nombre:"Equipo"} · ${LECT[t]||""}`; };
+const photoCaption = key => { const t=key[1], id=key.slice(3); const e=equipos().find(x=>x.id===id); return `${e?e.nombre+" · "+e.zona:"Equipo"} · ${LECT[t]||""}`; };
 async function pdfBody(P, d, r){
   P.sec("1. DATOS DEL DÍA");
   P.table({body:[
@@ -508,7 +527,7 @@ async function pdfBody(P, d, r){
   P.sec("2. LECTURAS POR EQUIPO (la hora es la de la foto del termómetro)");
   const st = x => x.st ? x.st : "-";
   const body = [];
-  ZONAS_EQ.forEach(z=>{ const eqs = d.equipos.filter(e=>e.zona===z); if (!eqs.length) return;
+  [...new Set(d.zonas)].forEach(z=>{ const eqs = d.equipos.filter(e=>e.zona===z); if (!eqs.length) return;
     body.push([{content:z.toUpperCase(), colSpan:9, styles:{fillColor:P.SECF, fontStyle:"bold"}}]);
     eqs.forEach(e=>body.push([pdfTxt(e.equipo), pdfTxt(e.rango),
       e.m.v||"-", e.m.hora||"-", st(e.m), e.t.v||"-", e.t.hora||"-", st(e.t),
