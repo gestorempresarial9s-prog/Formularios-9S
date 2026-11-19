@@ -12,6 +12,10 @@ Cada empresa tiene su carpeta y cada formulario su subcarpeta con el código del
 /el-patio/f-sr-01/        El Patio Villa de Leyva · F-SR-01 Checklist de apertura
 /el-patio/f-pn-03/        El Patio Villa de Leyva · F-PN-03 Control de calidad previo a la salida de platos
 /el-patio/f-pn-05/        El Patio Villa de Leyva · F-PN-05 Registro de temperaturas de equipos de frío
+/eds-cristancho/f-sst-11/  EDS Cristancho Moniquirá · F-SST-11 Inspección de botiquín
+/eds-cristancho/f-sst-12/  EDS Cristancho Moniquirá · F-SST-12 Inspección de extintores
+/eds-cristancho/f-ma-05/   EDS Cristancho Moniquirá · F-MA-05 Inspección RESPEL y kit antiderrames
+/eds-cristancho/f-sst-13/  EDS Cristancho Moniquirá · F-SST-13 Control aseo de baños
 ```
 
 Enlace de cada formulario: `https://gestorempresarial9s-prog.github.io/formularios-9s/<empresa>/<codigo>/`
