@@ -302,7 +302,13 @@ const CTRL = {codigo:"F-PN-05", version:"02", emision:"18/11/2026", proceso:"Pro
 const TIPOS = {R:{label:"Refrigeración", mn:0, mx:4, txt:"0 a 4 °C"}, C:{label:"Congelación", mn:-30, mx:-18, txt:"-18 °C o menos"}};
 /* Zonas y equipos: los define cada empresa desde el formulario y quedan guardados en el celular. */
 const CFG_KEY = "f-pn-05-zonas-equipos";
-let cfg = {zonas:[]};
+/* Lista inicial de la empresa (lo único propio de El Patio en este formato). Se carga si el celular no tiene una lista guardada. */
+const PRESET = {zonas:[
+  {id:"zc", nombre:"Zona de cocina", equipos:[1,2,3,4,5].map(n=>({id:"n"+n, nombre:"Nevera "+n, tipo:"R"}))},
+  {id:"zb", nombre:"Zona de bebidas", equipos:[6,7,8].map(n=>({id:"n"+n, nombre:"Nevera "+n, tipo:"R"}))}
+]};
+const clonePreset = () => JSON.parse(JSON.stringify(PRESET));
+let cfg = clonePreset();
 try{ const c = JSON.parse(localStorage.getItem(CFG_KEY)||"null"); if (c && Array.isArray(c.zonas)) cfg = c; }catch(e){}
 const saveCfg = () => { try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){} };
 const uid = () => Math.random().toString(36).slice(2,8);
@@ -364,9 +370,10 @@ function renderDynamic(){
 function cfgPanel(){
   return `<div class="panel" data-step="1" hidden>
     <h2>2. Zonas y equipos</h2>
-    <p class="hint">Crea las zonas con el nombre que usa la empresa y agrega en cada una sus neveras y congeladores. Se numeran solos (Nevera 1, Congelador 1…) y puedes cambiarles el nombre. Esta lista queda guardada en este celular para los próximos días; solo se ajusta cuando cambian los equipos.</p>
+    <p class="hint">Revisa que estén todas las zonas y equipos. Puedes agregar zonas, neveras o congeladores y cambiarles el nombre. Se numeran solos (Nevera 1, Congelador 1…) y puedes cambiarles el nombre. Esta lista queda guardada en este celular para los próximos días; solo se ajusta cuando cambian los equipos.</p>
     <div class="needs" id="cfg"></div>
     <button type="button" class="btn" id="add-zona">+ Agregar zona</button>
+    <button type="button" class="btn ghost" id="reset-cfg">Volver a la lista inicial de la empresa</button>
   </div>`;
 }
 function lecturaPanel(step, t, titulo, hint){
@@ -414,6 +421,9 @@ function findZ(id){ return cfg.zonas.find(z=>z.id===id); }
 function armed(b, txt){ if (b.dataset.armed) return true; const o=b.textContent; b.dataset.armed="1"; b.textContent=txt; setTimeout(()=>{ if(b.isConnected){ delete b.dataset.armed; b.textContent=o; } }, 4000); return false; }
 function onFormClick(b){
   const d = b.dataset;
+  if (b.id==="reset-cfg"){ if (!armed(b, "Toca otra vez: se reemplaza la lista actual")) return true;
+    cfg = clonePreset(); saveCfg(); const ids = equipos().map(e=>e.id);
+    photos = photos.filter(p=>ids.some(id=>p.item.endsWith("-"+id))); renderDynamic(); toast("Se cargó la lista inicial de equipos."); return true; }
   if (b.id==="add-zona"){ cfg.zonas.push({id:uid(), nombre:"", equipos:[]}); saveCfg(); renderDynamic(); const ins=$$('#cfg [data-cfg="zona"]'); ins[ins.length-1]?.focus(); return true; }
   if (d.addEq){ const [zid, tipo] = d.addEq.split("|"); const z=findZ(zid); if (!z) return true;
     z.equipos.push({id:uid(), nombre:nextName(tipo), tipo}); saveCfg(); renderDynamic(); return true; }
