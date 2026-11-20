@@ -19,6 +19,8 @@ Cada empresa tiene su carpeta y cada formulario su subcarpeta con el código del
 /eds-la-esperanza/f-sst-11/  EDS La Esperanza Ventaquemada · F-SST-11 Inspección de botiquín
 /eds-la-esperanza/f-sst-12/  EDS La Esperanza Ventaquemada · F-SST-12 Inspección de extintores
 /eds-la-esperanza/f-sst-13/  EDS La Esperanza Ventaquemada · F-SST-13 Control aseo de baños
+/eds-la-esperanza/f-sst-16/  EDS La Esperanza Ventaquemada · F-SST-16 Inspección de orden y aseo
+/eds-la-esperanza/f-sst-17/  EDS La Esperanza Ventaquemada · F-SST-17 Inspección de infraestructura locativa
 /eds-la-esperanza/f-ma-02/   EDS La Esperanza Ventaquemada · F-MA-02 Inspección y control de plagas
 ```
 
