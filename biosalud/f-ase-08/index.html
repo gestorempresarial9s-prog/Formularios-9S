@@ -278,19 +278,18 @@ function dbGet(){return new Promise(res=>{ if(!idb) return res(null); try{const 
 
 /* ---- redacción guía (ISO 19011 3.9–3.10; ISO 45001 10.2; Res. 0312 art. 27) ---- */
 function refTxt(it){ return [/^\d/.test(it.g)?`ISO 45001 ${it.cl}`:"", it.n, it.s?`Res. 0312, estándar ${it.s}`:""].filter(Boolean).join("; "); }
+function refCorta(it){ return it.s ? `Res. 0312, est. ${it.s}` : (/^\d/.test(it.g) ? `ISO 45001 ${it.cl}; ${it.n}` : it.n); }
 function redaccion(it,r){
-  const ev = trimDot(r.ev) || "[describa lo revisado: documento, código, versión, fecha o muestra]";
-  const req = `Requisito (${refTxt(it)}): ${trimDot(it.cr)}.`;
-  const gest = trimDot(r.gest ?? it.gs);
-  const al = it.al ? ` En el alistamiento la empresa reportó: ${trimDot(it.al)}.` : "";
-  const pts = it.s ? ` El estándar suma ${fmt(it.p)} puntos de la Res. 0312.` : "";
+  const ev = trimDot(r.ev) || "[qué se revisó]";
+  const req = `${it.t} (${refCorta(it)})`;
+  const gest = lc(trimDot(r.gest ?? it.gs));
   switch(r.h){
-    case "C": return `Conforme. ${req} Evidencia: ${ev}. El requisito está implementado, vigente y cuenta con registros de aplicación.${pts}`;
-    case "FO": return `Fortaleza. ${req} Evidencia: ${ev}. La práctica supera lo exigido porque [describa qué la hace destacable] y puede replicarse en [otras áreas, sedes o procesos].${pts}`;
-    case "OB": return `Observación. ${req} Evidencia: ${ev}. A la fecha el requisito se cumple, pero se identificó [debilidad o tendencia: registro incompleto, documento sin uso reciente, evidencia escasa o próxima a vencer] que, si no se atiende, puede convertirse en una no conformidad. Acción preventiva: ${lc(gest)}.`;
-    case "OM": return `Oportunidad de mejora. ${req} Evidencia: ${ev}. El requisito se cumple y puede hacerse más eficaz, más simple o mejor integrado con otros procesos. Mejora propuesta: ${lc(gest)}.`;
-    case "NC": return `No conformidad ${(r.g||"menor").toLowerCase()}. ${req} Evidencia: ${ev}.${al} Brecha: [indique qué falta o qué no se cumple frente al requisito].${it.s?` El estándar suma 0 de ${fmt(it.p)} puntos de la Res. 0312.`:""} Acción correctiva: ${lc(gest)}, con análisis de causa y verificación de eficacia.`;
-    case "NA": return `No aplica. El requisito ${it.s||it.c} (${it.t}) no aplica a la empresa porque [justificación técnica o legal: actividad, cargo o exposición que no existe]. Soporte de la justificación: ${ev}.${it.s?` Conforme al art. 27 de la Res. 0312, el estándar suma ${fmt(it.p)} puntos.`:""}`;
+    case "C":  return `Conforme: ${req}. Evidencia: ${ev}.`;
+    case "FO": return `Fortaleza: ${req}. Evidencia: ${ev}. Se destaca por [motivo].`;
+    case "OB": return `Observación: ${req}. Se cumple, pero [debilidad]. Evidencia: ${ev}. Acción preventiva: ${gest}.`;
+    case "OM": return `Oportunidad de mejora: ${req}. Evidencia: ${ev}. Propuesta: ${gest}.`;
+    case "NC": return `No conformidad ${(r.g||"menor").toLowerCase()}: ${req}. Evidencia: ${ev}. Falta: [qué no se cumple]. Acción correctiva: ${gest}.`;
+    case "NA": return `No aplica: ${req}. Motivo: [por qué no aplica]. Soporte: ${ev}.`;
   }
   return "";
 }
@@ -372,7 +371,7 @@ function itemHTML(it){
      <label class="full">${h==="NA"?"Soporte de la justificación de No aplica":"Evidencia observada (documento, código, versión, fecha, muestra)"}<textarea id="ev-${it.c}" data-f="ev" rows="2">${esc(r.ev)}</textarea></label>
      ${h?`<div class="red full"><div class="rh"><b>Redacción del hallazgo · ${H[h]}</b><button type="button" class="btn" data-regen="1">Volver a generar</button></div>
        <textarea id="red-${it.c}" data-f="red" rows="5">${esc(r.red)}</textarea>
-       <span class="hint">${r.redAuto===false?"Editada por usted: ya no cambia sola.":"Se arma sola con la evidencia y la gestión; complete lo que está entre corchetes. Al escribir aquí, queda fija."}</span></div>`:""}
+       <span class="hint">${r.redAuto===false?"Editada por usted: ya no cambia sola.":"Complete lo que está entre corchetes. Al escribir aquí, queda fija."}</span></div>`:""}
      <div class="full"><span class="hint">Registro fotográfico</span>${photosHTML(it.c)}</div>
      <label class="full">Gestión a realizar · proyección de mejora (editable)<textarea id="g-${it.c}" data-f="gest" rows="2">${esc(r.gest ?? it.gs)}</textarea></label>
      <label>Responsable<input type="text" id="rs-${it.c}" data-f="resp" value="${esc(r.resp)}"></label>
@@ -650,6 +649,7 @@ $("#scope").addEventListener("change",e=>{const k=e.target.dataset.scope;if(!k)r
   if(k==="MAT"){S.noMat=!e.target.checked;}
   else ITEMS.filter(i=>i.b===k).forEach(i=>{ if(e.target.checked){ if(typeof S.off[i.c]==="string"&&S.off[i.c].startsWith(BLOCK_TAG)) delete S.off[i.c]; else if(S.off[i.c]!==undefined&&!e.target.dataset.keep) delete S.off[i.c]; } else if(ON(i)) S.off[i.c]=BLOCK_TAG+BN[k]; });
   persist();renderScope();renderSide();renderList();toast(k==="MAT"?(S.noMat?"Lectura de madurez quitada":"Lectura de madurez incluida"):(e.target.checked?"Norma incluida en el alcance":"Norma excluida del alcance"))});
+Object.entries(S.r).forEach(([c,r])=>{const it=ITEMS.find(i=>i.c===c); if(it&&r.h&&r.redAuto!==false) r.red=redaccion(it,r)}); persist();
 renderCtrl();renderMeta();renderScope();renderSide();renderList();
 openDB().then(async d=>{idb=d;const got=await dbGet();if(got){P=got;renderList()}});
 </script>
