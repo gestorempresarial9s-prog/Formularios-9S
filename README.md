@@ -25,7 +25,7 @@ Cada empresa tiene su carpeta y cada formulario su subcarpeta con el código del
 /biosalud/f-ase-08/         Biosalud Wellness Center · F-ASE-08 Informe auditoría SG-SST integral (Res. 0312, Dec. 1072, ISO 45001; formato de 9S)
 ```
 
-Enlace de cada formulario: `https://gestorempresarial9s-prog.github.io/formularios-9s/<empresa>/<codigo>/`
+Enlace de cada formulario: `https://gestorempresarial9s-prog.github.io/Formularios-9S/<empresa>/<codigo>/` (la dirección distingue mayúsculas)
 
 ## Cómo funcionan
 
