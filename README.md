@@ -22,7 +22,7 @@ Cada empresa tiene su carpeta y cada formulario su subcarpeta con el código del
 /eds-la-esperanza/f-sst-16/  EDS La Esperanza Ventaquemada · F-SST-16 Inspección de orden y aseo
 /eds-la-esperanza/f-sst-17/  EDS La Esperanza Ventaquemada · F-SST-17 Inspección de infraestructura locativa
 /eds-la-esperanza/f-ma-02/   EDS La Esperanza Ventaquemada · F-MA-02 Inspección y control de plagas
-/biosalud/f-ase-08/         Biosalud Wellness Center · F-ASE-08 Informe auditoría SG-SST (Res. 0312, formato de 9S)
+/biosalud/f-ase-08/         Biosalud Wellness Center · F-ASE-08 Informe auditoría SG-SST integral (Res. 0312, Dec. 1072, ISO 45001; formato de 9S)
 ```
 
 Enlace de cada formulario: `https://gestorempresarial9s-prog.github.io/formularios-9s/<empresa>/<codigo>/`
